@@ -56,13 +56,23 @@ export function createRenderer(canvas) {
   }
 
   // ---- terrain ----
+  // ---- terrain: v2 layered perspective ----
+  // Sky: sun glare, drifting clouds, then THREE ridge layers receding to the
+  // horizon with atmospheric perspective — far ridges paler and bluer, near
+  // ridges darker and taller — instead of v1's single flat silhouette.
   function drawSky(state, horizonY) {
     const g = ctx.createLinearGradient(0, 0, 0, horizonY + 40);
     g.addColorStop(0, state.region.sky);
     g.addColorStop(1, '#e8f4fb');
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, horizonY + 40);
-    // Sun + clouds (drift with distance so the sky feels alive).
+    // Sun glare: hot core + wide halo.
+    const glare = ctx.createRadialGradient(1080, 84, 4, 1080, 84, 130);
+    glare.addColorStop(0, 'rgba(255, 246, 200, 0.85)');
+    glare.addColorStop(0.35, 'rgba(255, 240, 170, 0.35)');
+    glare.addColorStop(1, 'rgba(255, 240, 170, 0)');
+    ctx.fillStyle = glare;
+    ctx.fillRect(930, -46, 300, 260);
     ctx.fillStyle = 'rgba(255, 244, 190, 0.95)';
     ctx.beginPath();
     ctx.arc(1080, 84, 30, 0, Math.PI * 2);
@@ -76,27 +86,85 @@ export function createRenderer(canvas) {
       ctx.ellipse(cx + 40, cy + 6, 44, 14, 0, 0, Math.PI * 2);
       ctx.fill();
     }
-    // Distant mountain silhouette per region.
-    ctx.fillStyle = state.region.accent;
-    ctx.globalAlpha = 0.35;
-    ctx.beginPath();
-    ctx.moveTo(0, horizonY);
-    for (let x = 0; x <= W; x += 80) {
-      const hgt = 40 + 46 * Math.abs(Math.sin(x * 0.011 + state.region.name.length));
-      ctx.lineTo(x, horizonY - hgt);
+    // Ridge layers: [pale far, mid, dark near] — amplitude grows, colour
+    // deepens toward the viewer. Phases drift slowly with distance flown.
+    const layers = [
+      { alpha: 0.28, color: '#b8d4e8', amp: 26, base: 26, phase: 0.006, drift: 0.4 },
+      { alpha: 0.42, color: '#7fa8c8', amp: 44, base: 34, phase: 0.009, drift: 0.8 },
+      { alpha: 0.55, color: state.region.accent, amp: 62, base: 40, phase: 0.013, drift: 1.4 },
+    ];
+    for (const L of layers) {
+      ctx.fillStyle = L.color;
+      ctx.globalAlpha = L.alpha;
+      ctx.beginPath();
+      ctx.moveTo(0, horizonY);
+      for (let x = 0; x <= W; x += 40) {
+        const hgt = L.base + L.amp * Math.abs(Math.sin(x * L.phase + state.region.name.length + state.dist * L.drift));
+        ctx.lineTo(x, horizonY - hgt);
+      }
+      ctx.lineTo(W, horizonY);
+      ctx.closePath();
+      ctx.fill();
     }
-    ctx.lineTo(W, horizonY);
-    ctx.closePath();
-    ctx.fill();
     ctx.globalAlpha = 1;
   }
 
   function drawGround(state, horizonY) {
+    // v2: the horizon curves (earth curvature — edges dip ~18 px below the
+    // centre vanishing point) instead of v1's flat straight line.
     const g = ctx.createLinearGradient(0, horizonY, 0, H);
     g.addColorStop(0, state.region.groundFar);
     g.addColorStop(1, state.region.ground);
     ctx.fillStyle = g;
-    ctx.fillRect(0, horizonY, W, H - horizonY);
+    ctx.beginPath();
+    ctx.moveTo(0, horizonY + 18);
+    ctx.quadraticCurveTo(640, horizonY - 8, W, horizonY + 18);
+    ctx.lineTo(W, H);
+    ctx.lineTo(0, H);
+    ctx.closePath();
+    ctx.fill();
+    // Moving cloud shadows drift across the ground with distance flown.
+    ctx.fillStyle = 'rgba(15, 35, 55, 0.10)';
+    for (let i = 0; i < 3; i += 1) {
+      const sx = ((i * 520 - state.dist * 320) % 1700 + 1700) % 1700 - 220;
+      const sy = horizonY + 70 + (i % 2) * 110;
+      ctx.beginPath();
+      ctx.ellipse(sx, sy, 210 + i * 40, 26 + i * 8, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Pseudo-3D ground grid receding to the vanishing point (640, horizonY):
+    // fan lines + horizontal bands with quadratically growing spacing, so the
+    // ground reads as a plane the plane flies over, not a flat backdrop.
+    // (Land kinds only — water regions keep their wave lines instead.)
+    const r0 = state.region;
+    if (r0.kind !== 'karst' && r0.kind !== 'lake') {
+      ctx.strokeStyle = 'rgba(255,255,255,0.10)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      for (let i = -8; i <= 8; i += 1) {
+        ctx.moveTo(640, horizonY);
+        ctx.lineTo(640 + i * 260, H);
+      }
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(0,0,0,0.10)';
+      ctx.beginPath();
+      for (let k = 1; k <= 6; k += 1) {
+        const y = horizonY + (H - horizonY) * (k * k) / 36;
+        ctx.moveTo(0, y);
+        ctx.lineTo(W, y);
+      }
+      ctx.stroke();
+    }
+    // Ground texture: deterministic speckles scrolling with distance.
+    const scroll0 = (state.dist * 1400) % 90;
+    for (let i = 0; i < 90; i += 1) {
+      const tx = (i * 173 + scroll0 * 2) % W;
+      const ty = horizonY + 24 + ((i * 97) % Math.max(40, H - horizonY - 30));
+      ctx.fillStyle = i % 2 ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.06)';
+      ctx.beginPath();
+      ctx.arc(tx, ty, 2 + (i % 3), 0, Math.PI * 2);
+      ctx.fill();
+    }
     const r = state.region;
     const scroll = (state.dist * 1400) % 90;
     if (r.kind === 'karst' || r.kind === 'lake') {
@@ -265,9 +333,15 @@ export function createRenderer(canvas) {
       ctx.ellipse(x, y, size, size * 0.72, 0, 0, Math.PI * 2);
       ctx.stroke();
       ctx.shadowBlur = 0;
-      ctx.fillStyle = '#fff';
-      text(`RING ${state.ringIndex + k + 1}`, x, y - size * 0.72 - 8, 15, '#fff', 'center', true);
-      text(`${fmt(ring.alt)} ft · ${d.toFixed(1)} nm`, x, y + size * 0.72 + 18, 13, '#fff', 'center');
+      // v2: label ONLY the next ring. v1 labelled all three rings on screen
+      // and the labels collided (shot 1: RING 2/RING 3 text on top of each
+      // other; shot 2: RING 5/RING 6 the same). Upcoming rings stay visible
+      // as bare ellipses.
+      if (k === 0) {
+        ctx.fillStyle = '#fff';
+        text(`RING ${state.ringIndex + k + 1}`, x, y - size * 0.72 - 8, 15, '#fff', 'center', true);
+        text(`${fmt(ring.alt)} ft · ${d.toFixed(1)} nm`, x, y + size * 0.72 + 18, 13, '#fff', 'center');
+      }
       ctx.restore();
     }
     if (landing) {
@@ -300,7 +374,10 @@ export function createRenderer(canvas) {
           ctx.arc(cx + i * (wNear / 3.4), yBot - 6, 5, 0, Math.PI * 2);
           ctx.fill();
         }
-        text(`RUNWAY · ${d.toFixed(1)} nm — HDG ${String(Math.round(((state.runwayHeading % 360) + 360) % 360)).padStart(3, '0')}°`, cx, yTop - 12, 16, '#fff', 'center', true);
+        // v2: label sits BELOW the runway strip (yBot+20), on the ground.
+        // v1 drew it at yTop-12, right where the plane flies — the fuselage
+        // covered the middle of "RUNWAY · 2.9 nm — HDG 328°" in shot 3.
+        text(`RUNWAY · ${d.toFixed(1)} nm — HDG ${String(Math.round(((state.runwayHeading % 360) + 360) % 360)).padStart(3, '0')}°`, cx, yBot + 22, 16, '#fff', 'center', true);
       }
     }
   }
@@ -309,11 +386,15 @@ export function createRenderer(canvas) {
     const px = 640;
     const py = 300 + state.pitch * 1.2;
     const bank = clamp(state.roll * 0.5, -24, 24);
-    ctx.save();
-    ctx.translate(px, py);
-    ctx.rotate((bank * Math.PI) / 180);
-    // Shadow on the ground far below.
-    ctx.restore();
+    // v2: soft shadow ellipse on the ground below the plane — it shrinks and
+    // fades as altitude grows, which sells height above the terrain.
+    const horizonY = clamp(300 + state.pitch * 3, 190, 430);
+    const shA = clamp(0.32 - state.alt / 25000, 0.07, 0.32);
+    const shRx = clamp(95 - state.alt / 90, 22, 95);
+    ctx.fillStyle = `rgba(10, 25, 35, ${shA.toFixed(3)})`;
+    ctx.beginPath();
+    ctx.ellipse(px + state.lateral * 60, Math.min(H - 168, horizonY + 150), shRx, shRx * 0.28, 0, 0, Math.PI * 2);
+    ctx.fill();
     ctx.save();
     ctx.translate(px, py);
     ctx.rotate((bank * Math.PI) / 180);
@@ -576,32 +657,42 @@ export function createRenderer(canvas) {
   }
 
   function drawTitle(state, ui) {
-    // Right-side panel so the live chase view stays visible.
+    // v2: slim right panel (968–1256) ending at y=540, ABOVE the cockpit
+    // panel (y=556). v1's panel ran 830–1250 down to y=644 and covered the
+    // fuel gauge, throttle lever and warning lamps. Now every instrument —
+    // attitude, ALT/SPD/VSI dials, heading tape, fuel, throttle, lamps —
+    // is fully visible and unobstructed on the title screen.
     ctx.fillStyle = 'rgba(11,28,44,0.86)';
-    rr(830, 76, 420, 568, 14);
+    rr(968, 76, 288, 464, 14);
     ctx.fill();
     ctx.strokeStyle = '#3a5a72';
     ctx.lineWidth = 2;
     ctx.stroke();
-    text('NUSANTARA', 1040, 128, 34, '#f2c94c', 'center', true);
-    text('SKY COURIER', 1040, 164, 34, '#eaf6ff', 'center', true);
-    text('v1 · 7 islands · 12 missions · 3 aircraft', 1040, 190, 14, '#9db8c9', 'center');
-    text('8 upgrades · 4 modes · 4 weather types', 1040, 210, 14, '#9db8c9', 'center');
-    text('Fly the rings, deliver the cargo,', 1040, 244, 15, '#eaf6ff', 'center');
-    text('land on the runway. Bromo to Raja Ampat.', 1040, 266, 15, '#eaf6ff', 'center');
-    button(ui, 'campaign', 860, 292, 360, 46, '▶  CAMPAIGN  (12 missions)', true);
-    button(ui, 'free', 860, 346, 175, 42, 'FREE FLIGHT');
-    button(ui, 'race', 1045, 346, 175, 42, 'RING RACE');
-    button(ui, 'landing', 860, 396, 360, 42, 'LANDING CHALLENGE');
-    text('AIRCRAFT', 860, 470, 12, '#9db8c9');
+    text('NUSANTARA', 1112, 122, 26, '#f2c94c', 'center', true);
+    text('SKY COURIER', 1112, 150, 26, '#eaf6ff', 'center', true);
+    text('v2 · 7 islands · 12 missions', 1112, 172, 11, '#9db8c9', 'center');
+    text('3 aircraft · 8 upgrades · 4 modes', 1112, 188, 11, '#9db8c9', 'center');
+    text('Fly the rings, deliver the cargo,', 1112, 218, 13, '#eaf6ff', 'center');
+    text('land on the runway.', 1112, 236, 13, '#eaf6ff', 'center');
+    button(ui, 'campaign', 988, 260, 248, 42, '▶  CAMPAIGN · 12 MISSIONS', true);
+    button(ui, 'free', 988, 310, 120, 38, 'FREE FLIGHT');
+    button(ui, 'race', 1116, 310, 120, 38, 'RING RACE');
+    button(ui, 'landing', 988, 356, 248, 38, 'LANDING CHALLENGE');
+    text('AIRCRAFT', 988, 414, 12, '#9db8c9');
     AIRCRAFT.forEach((ac, i) => {
       const owned = state.ownedAircraft.has(ac.id);
       const short = ac.name.split(' ')[0];
-      button(ui, `aircraft:${ac.id}`, 860 + i * 122, 480, 116, 52, owned ? short : `${short} ${ac.cost}c`, state.aircraft.id === ac.id);
+      button(ui, `aircraft:${ac.id}`, 988, 424 + i * 34, 248, 30, owned ? short : `${short} — ${ac.cost} coins`, state.aircraft.id === ac.id);
     });
-    text('↑↓ pitch · ←→ turn · W/S throttle · Space flaps', 1040, 556, 13, '#9db8c9', 'center');
-    text('Mouse drag steers · P pause · Enter start', 1040, 576, 13, '#9db8c9', 'center');
-    text(`Coins in bank: ${state.bank}  ·  Missions unlocked: ${state.unlocked}/12`, 1040, 612, 13, '#f2c94c', 'center');
+    // v2: controls hint lives in a wide pill under the HUD (title screen
+    // has no message banner), NOT crammed into the panel footer — two
+    // attempts to fit it at the panel's bottom edge both clipped the
+    // leading ↑↓ against the panel's rounded corner.
+    ctx.fillStyle = 'rgba(11,28,44,0.85)';
+    rr(380, 76, 520, 30, 8);
+    ctx.fill();
+    text('↑↓ pitch · ←→ turn · W/S throttle · Space flaps · Mouse drag steers · P pause', 640, 96, 13, '#eaf6ff', 'center');
+    text(`Coins in bank: ${state.bank}  ·  Missions unlocked: ${state.unlocked}/12`, 1112, 534, 11, '#f2c94c', 'center');
   }
 
   function drawOver(state, ui) {

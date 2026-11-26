@@ -72,11 +72,17 @@ export function createWorld(rng) {
   function buildRings(mission, count) {
     const rings = [];
     let heading = range(rng, -20, 20);
+    // v2: consecutive rings ramp at most 600 ft, so a climb started at the
+    // previous ring always reaches the next one inside the 350 ft band.
+    let prevAlt = mission.altBase;
     for (let i = 0; i < count; i += 1) {
       heading = clamp(heading + range(rng, -18, 18), -45, 45);
+      const raw = Math.round(clamp(mission.altBase + range(rng, -500, 500), 1200, 7500) / 50) * 50;
+      const alt = Math.round(clamp(raw, prevAlt - 600, prevAlt + 600) / 50) * 50;
+      prevAlt = alt;
       rings.push({
         dist: 1.5 + i * 0.9,
-        alt: Math.round(clamp(mission.altBase + range(rng, -500, 500), 1200, 7500) / 50) * 50,
+        alt,
         heading: Math.round(heading),
         passed: false, missed: false,
       });
@@ -126,7 +132,12 @@ export function createWorld(rng) {
 
   function startMission(id) {
     const mission = MISSION_BY_ID[id] || MISSIONS[0];
-    setupFlight({ mode: 'campaign', mission, count: mission.rings, timeLimit: mission.time, weatherId: mission.weather, startAlt: 2500, startDist: 0 });
+    // v2: start 700 ft below the mission band (was a flat 2,500 ft). M8's
+    // band sits at 5,800 ft — from 2,500 ft the autopilot only reached
+    // 5,306 ft at ring 1 and missed it (6/7, 2 stars). From 5,100 ft it
+    // climbs into the band with room to spare.
+    const startAlt = Math.round(clamp(mission.altBase - 700, 2500, 6000) / 50) * 50;
+    setupFlight({ mode: 'campaign', mission, count: mission.rings, timeLimit: mission.time, weatherId: mission.weather, startAlt, startDist: 0 });
   }
   function startFreeFlight() {
     setupFlight({ mode: 'free', mission: null, count: 6, timeLimit: 600, weatherId: 'clear', startAlt: 3000, startDist: 0 });
