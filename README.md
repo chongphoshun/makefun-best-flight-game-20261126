@@ -7,7 +7,7 @@
 Built for [Make the best flight game](https://make.fun/bounty/best-flight-game-20261126-0057) on [make.fun](https://make.fun).
 
 **Bounty:** `best-flight-game-20261126-0057` — "Make the best flight game" ($500 pot, free entry)
-**Title:** Nusantara Sky Courier v3: REAL 3D · 7 islands, 12 missions, 3 aircraft, 8 upgrades
+**Title:** Nusantara Sky Courier v3.1: REAL 3D · 7 islands, 12 missions, 3 aircraft, 8 upgrades
 
 A one-screen Indonesian flight game in a chase view over recognisable
 terrain — **now real 3D**: the world is a raw WebGL1 scene (no library, no
@@ -18,6 +18,17 @@ Chrome and play. The live leaderboard for this bounty is blind
 (scores not visible), so there is no live top-10 to study; the build follows
 the density pattern of past game winners instead (multi-mission campaign,
 upgrades, weather, modes).
+
+**v3.1 (27 Nov 2026) — craft patches on top of v3, from GitHub research into
+flight-sim rendering (patterns studied, all code written fresh here):**
+- Propeller blur disc: the spinning prop is now a faint translucent disc
+  with a soft tip-sweep ring and smeared blade wedges, not a white X.
+- Phong specular in the colour shader (broad exponent, aircraft 0.7):
+  a soft sun sheen on metal, visible on banked turns; terrain unchanged.
+- Terrain detail texture: a tiled grayscale noise tile sampled per-pixel,
+  so the ground keeps fine grain up close instead of flat vertex colour.
+- Two-tone aircraft: darker belly box, gold cheatline stripes on each
+  fuselage side, and a glass highlight streak on the canopy.
 
 ## How to play
 
@@ -184,15 +195,18 @@ screenshot comparisons on terrain/aircraft richness. v3 answers with **real
 
 - The 3D is low-poly flat-shaded with per-vertex colours, not textured
   meshes — a Three.js entry with textured terrain/aircraft would still
-  look richer in a pairwise screenshot comparison. The terrain has no
-  trees/buildings beyond the landmark meshes, and the sea has one wave
-  texture repeated.
+  look richer in a pairwise screenshot comparison. v3.1 closes part of
+  that gap (prop blur disc, Phong sheen, per-pixel terrain grain,
+  two-tone aircraft) but the meshes are still flat-shaded and the
+  specular is subtle in straight-and-level stills — it shows most on
+  banked turns. The terrain has no trees/buildings beyond the landmark
+  meshes, and the sea has one wave texture repeated.
 - The human run above is a scripted CDP input driver steering off the HUD,
   not a physical human hand on the keyboard — it proves the mission is
   completable with human inputs, not that a casual player finds it easy.
-- v3 is the third build; winners iterate to v4. Remaining ideas if time
+- v3.1 is the fourth build; winners iterate to v4. Remaining ideas if time
   allows: denser ground detail per region (trees, villages), a dusk/night
-  mission, more visible AI traffic.
+  mission, more visible AI traffic, contrails.
 
 ## Run it
 

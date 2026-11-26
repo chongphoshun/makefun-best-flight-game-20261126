@@ -1,7 +1,7 @@
-HUMAN M1 (v3, CDP keyboard + held mouse-drag, HUD-steered 10 Hz, seed 1):
-phase=landed rings=4/4 time=168s coins=280 fuel=55 msg=LANDED! +50 coins +114 time bonus
-t=37s ring 1/4 alt=3596 spd=150 fuel=90
-t=58s ring 2/4 alt=3316 spd=150 fuel=84
-t=80s ring 3/4 alt=3638 spd=150 fuel=79
-t=102s ring 4/4 alt=3739 spd=150 fuel=73
+HUMAN M1 (v3.1, CDP keyboard + held mouse-drag, HUD-steered 10 Hz, seed 1):
+phase=landed rings=4/4 time=168s coins=279 fuel=55 msg=LANDED! +50 coins +113 time bonus
+t=37s ring 1/4 alt=3126 spd=150 fuel=90
+t=59s ring 2/4 alt=3587 spd=150 fuel=84
+t=80s ring 3/4 alt=3265 spd=150 fuel=79
+t=102s ring 4/4 alt=3592 spd=150 fuel=73
 console errors: none

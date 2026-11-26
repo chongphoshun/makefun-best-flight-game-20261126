@@ -258,17 +258,28 @@ const COLOR_VERT = `
 attribute vec3 aPos;
 attribute vec3 aNormal;
 attribute vec3 aColor;
+attribute vec2 aUV;
 uniform mat4 uProj;
 uniform mat4 uView;
 uniform mat4 uModel;
+uniform vec3 uSunDir;
 varying vec3 vColor;
 varying vec3 vNormal;
+varying vec3 vViewDir;
+varying vec3 vSunDir;
+varying vec2 vUV;
 varying float vDist;
 void main() {
   vec4 wp = uModel * vec4(aPos, 1.0);
   vColor = aColor;
-  vNormal = normalize(mat3(uModel) * aNormal);
+  vUV = aUV;
+  // Normals and the sun live in VIEW space here, so the specular term and
+  // the diffuse term share one frame: rotating both by the view matrix
+  // leaves every dot product unchanged, so diffuse renders identically.
   vec4 vp = uView * wp;
+  vNormal = normalize(mat3(uView) * mat3(uModel) * aNormal);
+  vViewDir = normalize(-vp.xyz);
+  vSunDir = normalize(mat3(uView) * uSunDir);
   vDist = -vp.z;
   gl_Position = uProj * vp;
 }`;
@@ -276,16 +287,35 @@ const COLOR_FRAG = `
 precision mediump float;
 varying vec3 vColor;
 varying vec3 vNormal;
+varying vec3 vViewDir;
+varying vec3 vSunDir;
+varying vec2 vUV;
 varying float vDist;
-uniform vec3 uSunDir;
 uniform vec3 uFogColor;
 uniform vec2 uFogRange;
 uniform float uEmissive;
 uniform float uAlpha;
+uniform float uSpec;
+uniform sampler2D uDetail;
+uniform float uUseDetail;
 void main() {
   vec3 n = normalize(vNormal);
-  float diff = 0.35 + 0.65 * abs(dot(n, normalize(uSunDir)));
+  vec3 sun = normalize(vSunDir);
+  float diff = 0.35 + 0.65 * abs(dot(n, sun));
   vec3 col = vColor * diff;
+  // Phong specular: a soft white sheen where the sun reflects toward the
+  // camera. Shininess 12 (not 32): with this sun and chase camera the
+  // half-vector sits ~40 deg off the visible face normals, so a tight
+  // exponent never fires — a broad exponent gives a gentle metal sheen on
+  // banked turns instead of nothing. uSpec is 0 for terrain (unchanged).
+  float spec = pow(max(dot(reflect(-sun, n), normalize(vViewDir)), 0.0), 12.0) * uSpec;
+  col += vec3(1.0) * spec;
+  // Terrain detail: per-pixel grain from the tiled noise texture. Gated by
+  // uUseDetail so aircraft, rings, runway and landmarks never sample it.
+  if (uUseDetail > 0.5) {
+    float d = texture2D(uDetail, vUV).r;
+    col *= 0.82 + 0.36 * d;
+  }
   if (uEmissive > 0.5) col = vColor * 1.35;
   float f = clamp((vDist - uFogRange.x) / (uFogRange.y - uFogRange.x), 0.0, 1.0);
   col = mix(col, uFogColor, f);
@@ -466,6 +496,15 @@ function buildAircraft(colorHex, isJet) {
   m.box(0, 0, -1.2, 1.7, 1.7, 7.2, body); // cabin
   m.box(0, 0.1, 3.4, 1.1, 1.1, 2.6, body); // tail boom
   m.box(0, 0.75, -1.6, 0.9, 0.7, 2.2, glass); // canopy
+  // Two-tone: a darker belly box under the cabin, so the fuselage reads as
+  // a designed aircraft (light top, dark underside) instead of one flat
+  // colour from the chase view.
+  m.box(0, -0.75, -1.2, 1.5, 0.5, 6.0, [0.32, 0.36, 0.41]);
+  // Cheatline: a thin gold stripe along each fuselage side, slightly proud
+  // of the cabin wall so it renders instead of z-fighting it.
+  const gold = [0.95, 0.75, 0.25];
+  m.box(-0.87, 0.15, -1.2, 0.06, 0.25, 6.4, gold);
+  m.box(0.87, 0.15, -1.2, 0.06, 0.25, 6.4, gold);
   // Main wings (thin boxes with slight dihedral so they read as wings from
   // behind, not edge-on lines) + tailplane + fin.
   m.box(-3.7, 0.5, -0.9, 6.2, 0.28, 1.7, light);
@@ -483,12 +522,19 @@ function buildAircraft(colorHex, isJet) {
   }
   return m;
 }
-function buildProp() {
-  // Two-blade propeller disc in the XY plane at the nose (spun in draw).
+// Canopy glass highlight: one thin diagonal streak floating just above the
+// canopy top face, drawn emissive and translucent so it reads as a sun
+// reflection on glass. Kept out of the main aircraft mesh because it needs
+// its own emissive draw call.
+function buildCanopyGlint() {
   const m = new Mesh();
-  const c = [0.9, 0.9, 0.95];
-  m.quad([-0.18, -2.6, 0], [0.18, -2.6, 0], [0.18, 2.6, 0], [-0.18, 2.6, 0], c);
-  m.quad([-2.6, -0.18, 0], [2.6, -0.18, 0], [2.6, 0.18, 0], [-2.6, 0.18, 0], c);
+  m.quad(
+    [-0.30, 1.16, -2.45],
+    [0.10, 1.16, -2.45],
+    [0.30, 1.16, -0.75],
+    [-0.10, 1.16, -0.75],
+    [1, 1, 1],
+  );
   return m;
 }
 
@@ -572,6 +618,111 @@ function makeBlobTexture(gl) {
   return tex;
 }
 
+// Propeller blur disc: a spinning prop reads as a faint translucent disc
+// with a soft bright ring where the blade tips sweep, not as strobo blades.
+// Baked alpha stays low (peak ~0.28) — a disc that is too opaque reads as
+// a grey plate bolted in front of the nose.
+function makePropDiscTexture(gl) {
+  const c = document.createElement('canvas');
+  c.width = 128;
+  c.height = 128;
+  const x = c.getContext('2d');
+  const cx = 64;
+  const cy = 64;
+  // Soft ring, brightest where the blade tips sweep (~60% radius).
+  const ring = x.createRadialGradient(cx, cy, 18, cx, cy, 62);
+  ring.addColorStop(0, 'rgba(235,240,245,0)');
+  ring.addColorStop(0.45, 'rgba(235,240,245,0.10)');
+  ring.addColorStop(0.62, 'rgba(235,240,245,0.28)');
+  ring.addColorStop(0.8, 'rgba(235,240,245,0.12)');
+  ring.addColorStop(1, 'rgba(235,240,245,0)');
+  x.fillStyle = ring;
+  x.fillRect(0, 0, 128, 128);
+  // Two faint blurred blade wedges (the blades themselves, smeared by spin).
+  x.save();
+  x.translate(cx, cy);
+  for (const a of [0, Math.PI]) {
+    x.save();
+    x.rotate(a);
+    const wedge = x.createLinearGradient(0, -58, 0, -14);
+    wedge.addColorStop(0, 'rgba(235,240,245,0.22)');
+    wedge.addColorStop(1, 'rgba(235,240,245,0)');
+    x.fillStyle = wedge;
+    x.beginPath();
+    x.moveTo(-7, -14);
+    x.lineTo(7, -14);
+    x.lineTo(4, -58);
+    x.lineTo(-4, -58);
+    x.closePath();
+    x.fill();
+    x.restore();
+  }
+  x.restore();
+  // Hub cap in the middle.
+  const hub = x.createRadialGradient(cx, cy, 0, cx, cy, 12);
+  hub.addColorStop(0, 'rgba(210,216,222,0.85)');
+  hub.addColorStop(1, 'rgba(210,216,222,0)');
+  x.fillStyle = hub;
+  x.beginPath();
+  x.arc(cx, cy, 12, 0, Math.PI * 2);
+  x.fill();
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return tex;
+}
+
+// Terrain detail: a tiled grayscale noise tile sampled per-pixel, so the
+// ground keeps fine structure up close instead of interpolating 130 m
+// vertex-colour quads into mush. Same deterministic-hash pattern as the
+// wave texture. Splotches are drawn in 4 wrapped copies so the tile is
+// seamless at its 400 m repeat.
+function makeDetailTexture(gl) {
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 256;
+  const x = c.getContext('2d');
+  x.fillStyle = '#808080';
+  x.fillRect(0, 0, 256, 256);
+  for (let k = 0; k < 90; k += 1) {
+    const cx = hash2(k, 3, 21) * 256;
+    const cy = hash2(k, 5, 21) * 256;
+    const r = 12 + hash2(k, 7, 21) * 42;
+    const v = 96 + Math.floor(hash2(k, 9, 21) * 64);
+    for (const ox of [0, -256]) {
+      for (const oy of [0, -256]) {
+        const g = x.createRadialGradient(cx + ox, cy + oy, 0, cx + ox, cy + oy, r);
+        g.addColorStop(0, `rgba(${v},${v},${v},0.55)`);
+        g.addColorStop(1, `rgba(${v},${v},${v},0)`);
+        x.fillStyle = g;
+        x.beginPath();
+        x.arc(cx + ox, cy + oy, r, 0, Math.PI * 2);
+        x.fill();
+      }
+    }
+  }
+  // Fine speckle for close-range grain.
+  for (let k = 0; k < 700; k += 1) {
+    const px = hash2(k, 11, 21) * 256;
+    const py = hash2(k, 13, 21) * 256;
+    const v = 80 + Math.floor(hash2(k, 15, 21) * 96);
+    x.fillStyle = `rgba(${v},${v},${v},0.5)`;
+    x.fillRect(px, py, 2, 2);
+  }
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+  return tex;
+}
+
 // Wave streaks for the sea: a mid-blue tile with lighter and darker
 // horizontal streaks, tiled many times over the water plane so the sea
 // reads as water instead of a flat blue sheet.
@@ -647,6 +798,7 @@ export function createScene3D(canvas) {
     pos: gl.getAttribLocation(progC, 'aPos'),
     norm: gl.getAttribLocation(progC, 'aNormal'),
     col: gl.getAttribLocation(progC, 'aColor'),
+    uv: gl.getAttribLocation(progC, 'aUV'),
     proj: gl.getUniformLocation(progC, 'uProj'),
     view: gl.getUniformLocation(progC, 'uView'),
     model: gl.getUniformLocation(progC, 'uModel'),
@@ -655,6 +807,9 @@ export function createScene3D(canvas) {
     fogRange: gl.getUniformLocation(progC, 'uFogRange'),
     emissive: gl.getUniformLocation(progC, 'uEmissive'),
     alpha: gl.getUniformLocation(progC, 'uAlpha'),
+    spec: gl.getUniformLocation(progC, 'uSpec'),
+    detail: gl.getUniformLocation(progC, 'uDetail'),
+    useDetail: gl.getUniformLocation(progC, 'uUseDetail'),
   };
   const locT = {
     pos: gl.getAttribLocation(progT, 'aPos'),
@@ -671,6 +826,11 @@ export function createScene3D(canvas) {
   };
   const blobTex = makeBlobTexture(gl);
   const waveTex = makeWaveTexture(gl);
+  const propDiscTex = makePropDiscTexture(gl);
+  const detailTex = makeDetailTexture(gl);
+  // The detail sampler lives on texture unit 0 for the colour program.
+  gl.useProgram(progC);
+  gl.uniform1i(locC.detail, 0);
 
   // Static geometry, built once.
   const ringMesh = new Mesh();
@@ -727,6 +887,7 @@ export function createScene3D(canvas) {
   const terrainPos = new Float32Array(TX * TZ * 3);
   const terrainNorm = new Float32Array(TX * TZ * 3);
   const terrainCol = new Float32Array(TX * TZ * 3);
+  const terrainUV = new Float32Array(TX * TZ * 2);
   const terrainIdx = [];
   for (let j = 0; j < TZ - 1; j += 1) {
     for (let i = 0; i < TX - 1; i += 1) {
@@ -740,13 +901,14 @@ export function createScene3D(canvas) {
   const terrainPosBuf = gl.createBuffer();
   const terrainNormBuf = gl.createBuffer();
   const terrainColBuf = gl.createBuffer();
+  const terrainUVBuf = gl.createBuffer();
   const terrainIdxBuf = gl.createBuffer();
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, terrainIdxBuf);
   gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(terrainIdx), gl.STATIC_DRAW);
 
   let aircraftGeo = null;
+  let glintGeo = null;
   let aircraftId = null;
-  let propGeo = null;
   let landmarks = null;
   let landmarkRegion = null;
   let lost = false;
@@ -776,7 +938,7 @@ export function createScene3D(canvas) {
     gl.enableVertexAttribArray(locC.col);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, geo.idx);
   }
-  function drawColor(proj, view, model, geo, emissive, alpha, sunDir, fogColor, fogRange) {
+  function drawColor(proj, view, model, geo, emissive, alpha, sunDir, fogColor, fogRange, spec = 0) {
     gl.useProgram(progC);
     gl.uniformMatrix4fv(locC.proj, false, proj);
     gl.uniformMatrix4fv(locC.view, false, view);
@@ -786,6 +948,8 @@ export function createScene3D(canvas) {
     gl.uniform2fv(locC.fogRange, fogRange);
     gl.uniform1f(locC.emissive, emissive ? 1 : 0);
     gl.uniform1f(locC.alpha, alpha);
+    gl.uniform1f(locC.spec, spec);
+    gl.uniform1f(locC.useDetail, 0);
     bindColorGeo(geo);
     gl.drawElements(gl.TRIANGLES, geo.indexCount, gl.UNSIGNED_SHORT, 0);
   }
@@ -889,6 +1053,9 @@ export function createScene3D(canvas) {
         terrainPos[(j * TX + i) * 3] = lx;
         terrainPos[(j * TX + i) * 3 + 1] = h;
         terrainPos[(j * TX + i) * 3 + 2] = lz;
+        // Detail UVs from absolute course coords: one tile per 400 m.
+        terrainUV[(j * TX + i) * 2] = ax * 0.0025;
+        terrainUV[(j * TX + i) * 2 + 1] = as * 0.0025;
       }
     }
     const dxStep = (TX1 - TX0) / (TX - 1);
@@ -922,6 +1089,8 @@ export function createScene3D(canvas) {
     gl.bufferData(gl.ARRAY_BUFFER, terrainNorm, gl.DYNAMIC_DRAW);
     gl.bindBuffer(gl.ARRAY_BUFFER, terrainColBuf);
     gl.bufferData(gl.ARRAY_BUFFER, terrainCol, gl.DYNAMIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, terrainUVBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, terrainUV, gl.DYNAMIC_DRAW);
     const terrainGeo = { pos: terrainPosBuf, norm: terrainNormBuf, col: terrainColBuf, idx: terrainIdxBuf, indexCount: terrainIdx.length };
     gl.useProgram(progC);
     gl.uniformMatrix4fv(locC.proj, false, proj);
@@ -932,6 +1101,10 @@ export function createScene3D(canvas) {
     gl.uniform2fv(locC.fogRange, fogRange);
     gl.uniform1f(locC.emissive, 0);
     gl.uniform1f(locC.alpha, 1);
+    gl.uniform1f(locC.spec, 0);
+    gl.uniform1f(locC.useDetail, 1);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, detailTex);
     gl.bindBuffer(gl.ARRAY_BUFFER, terrainPosBuf);
     gl.vertexAttribPointer(locC.pos, 3, gl.FLOAT, false, 0, 0);
     gl.enableVertexAttribArray(locC.pos);
@@ -941,6 +1114,9 @@ export function createScene3D(canvas) {
     gl.bindBuffer(gl.ARRAY_BUFFER, terrainColBuf);
     gl.vertexAttribPointer(locC.col, 3, gl.FLOAT, false, 0, 0);
     gl.enableVertexAttribArray(locC.col);
+    gl.bindBuffer(gl.ARRAY_BUFFER, terrainUVBuf);
+    gl.vertexAttribPointer(locC.uv, 2, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(locC.uv);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, terrainIdxBuf);
     gl.drawElements(gl.TRIANGLES, terrainIdx.length, gl.UNSIGNED_SHORT, 0);
 
@@ -1015,7 +1191,7 @@ export function createScene3D(canvas) {
     // Aircraft (rebuild when the selected aircraft changes).
     if (aircraftId !== state.aircraft.id) {
       aircraftGeo = uploadStatic(gl, buildAircraft(state.aircraft.color, state.aircraft.id === 'garuda'));
-      propGeo = uploadStatic(gl, buildProp());
+      glintGeo = uploadStatic(gl, buildCanopyGlint());
       aircraftId = state.aircraft.id;
     }
     {
@@ -1023,14 +1199,22 @@ export function createScene3D(canvas) {
       const pitch = (state.pitch * Math.PI) / 180;
       const roll = (state.roll * Math.PI) / 180;
       const am = mat4Model(0, altM, 0, yaw, pitch, -roll, 1, 1, 1);
-      drawColor(proj, view, am, aircraftGeo, false, 1, sunDir, fogColor, fogRange);
+      drawColor(proj, view, am, aircraftGeo, false, 1, sunDir, fogColor, fogRange, 0.7);
+      // Canopy glint: same model matrix, emissive white streak, translucent.
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      gl.depthMask(false);
+      drawColor(proj, view, am, glintGeo, true, 0.45, sunDir, fogColor, fogRange);
+      gl.depthMask(true);
+      gl.disable(gl.BLEND);
       if (state.aircraft.id !== 'garuda') {
-        const spin = state.elapsed * 25;
-        const pm = mat4Multiply(am, mat4Multiply(mat4Translate(0, 0, -7.0), mat4RotateZ(spin)));
+        // The blur disc IS the spinning prop — no spin angle needed, the
+        // texture carries the smeared blades. Same nose offset as before.
+        const pm = mat4Multiply(am, mat4Multiply(mat4Translate(0, 0, -7.0), mat4Scale(5.4, 5.4, 1)));
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
         gl.depthMask(false);
-        drawColor(proj, view, pm, propGeo, true, 0.5, sunDir, fogColor, fogRange);
+        drawTex(proj, view, pm, [1, 1, 1], 1, fogColor, fogRange, propDiscTex);
         gl.depthMask(true);
         gl.disable(gl.BLEND);
       }
