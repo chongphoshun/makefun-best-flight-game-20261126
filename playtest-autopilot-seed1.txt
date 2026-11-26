@@ -1,15 +1,15 @@
-M1 bromo/clear: phase=landed rings=4/4 missed=0 time=211s left=15s coins=195 stars=3 fuel=59 alt=0 spd=0 msg=LANDED! +50 coins +29 time bonus
-M2 toba/clear: phase=landed rings=5/5 missed=0 time=235s left=16s coins=232 stars=3 fuel=53 alt=0 spd=0 msg=LANDED! +50 coins +31 time bonus
-M3 bali/rain: phase=landed rings=5/5 missed=0 time=235s left=16s coins=232 stars=3 fuel=53 alt=0 spd=0 msg=LANDED! +50 coins +31 time bonus
-M4 rajaampat/clear: phase=landed rings=6/6 missed=0 time=259s left=17s coins=269 stars=3 fuel=48 alt=0 spd=0 msg=LANDED! +50 coins +33 time bonus
-M5 jakarta/fog: phase=landed rings=6/6 missed=0 time=259s left=42s coins=319 stars=3 fuel=48 alt=0 spd=0 msg=LANDED! +50 coins +83 time bonus
-M6 borneo/rain: phase=landed rings=6/6 missed=0 time=259s left=42s coins=319 stars=3 fuel=48 alt=0 spd=0 msg=LANDED! +50 coins +83 time bonus
-M7 komodo/storm: phase=landed rings=7/7 missed=0 time=283s left=43s coins=356 stars=3 fuel=43 alt=0 spd=0 msg=LANDED! +50 coins +85 time bonus
+M1 bromo/clear: phase=landed rings=4/4 missed=0 time=211s left=14s coins=195 stars=3 fuel=59 alt=0 spd=0 msg=LANDED! +50 coins +29 time bonus
+M2 toba/clear: phase=landed rings=5/5 missed=0 time=235s left=15s coins=232 stars=3 fuel=53 alt=0 spd=0 msg=LANDED! +50 coins +31 time bonus
+M3 bali/rain: phase=landed rings=5/5 missed=0 time=235s left=15s coins=232 stars=3 fuel=53 alt=0 spd=0 msg=LANDED! +50 coins +31 time bonus
+M4 rajaampat/clear: phase=landed rings=6/6 missed=0 time=259s left=16s coins=269 stars=3 fuel=48 alt=0 spd=0 msg=LANDED! +50 coins +33 time bonus
+M5 jakarta/fog: phase=landed rings=6/6 missed=0 time=259s left=41s coins=319 stars=3 fuel=48 alt=0 spd=0 msg=LANDED! +50 coins +83 time bonus
+M6 borneo/rain: phase=landed rings=6/6 missed=0 time=259s left=41s coins=319 stars=3 fuel=48 alt=0 spd=0 msg=LANDED! +50 coins +83 time bonus
+M7 komodo/storm: phase=landed rings=7/7 missed=0 time=283s left=42s coins=356 stars=3 fuel=43 alt=0 spd=0 msg=LANDED! +50 coins +85 time bonus
 M8 toba/clear: phase=landed rings=7/7 missed=0 time=301s left=74s coins=419 stars=3 fuel=40 alt=0 spd=0 msg=LANDED! +50 coins +148 time bonus
-M9 bromo/fog: phase=landed rings=7/7 missed=0 time=283s left=43s coins=356 stars=3 fuel=43 alt=0 spd=0 msg=LANDED! +50 coins +85 time bonus
-M10 rajaampat/storm: phase=landed rings=8/8 missed=0 time=307s left=44s coins=393 stars=3 fuel=38 alt=0 spd=0 msg=LANDED! +50 coins +87 time bonus
+M9 bromo/fog: phase=landed rings=7/7 missed=0 time=283s left=42s coins=356 stars=3 fuel=43 alt=0 spd=0 msg=LANDED! +50 coins +85 time bonus
+M10 rajaampat/storm: phase=landed rings=8/8 missed=0 time=307s left=43s coins=393 stars=3 fuel=38 alt=0 spd=0 msg=LANDED! +50 coins +87 time bonus
 M11 jakarta/rain: phase=landed rings=8/8 missed=0 time=319s left=81s coins=467 stars=3 fuel=36 alt=0 spd=0 msg=LANDED! +50 coins +161 time bonus
-M12 bali/storm: phase=landed rings=10/10 missed=0 time=355s left=96s coins=567 stars=3 fuel=28 alt=0 spd=0 msg=LANDED! +50 coins +191 time bonus
+M12 bali/storm: phase=landed rings=10/10 missed=0 time=355s left=95s coins=567 stars=3 fuel=28 alt=0 spd=0 msg=LANDED! +50 coins +191 time bonus
 LANDING: landed coins 50 time 123 LANDED! +50 coins
 RACE: landed rings 8/8 time 307 LANDED! +50 coins
 TOTAL rings 79/79

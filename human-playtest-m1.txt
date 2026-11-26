@@ -1,62 +1,7 @@
-HUMAN PLAYTEST M1 — Nusantara Sky Courier v2 (live VM Chrome via CDP)
-Driver: scripted CDP input driver (NOT the in-game autopilot): reads HUD state
-(alt/heading/next-ring) at 10 Hz and steers with real keyboard events +
-held mouse drag. Keys: ArrowUp/Down pitch, Shift/Ctrl throttle, Space flaps,
-mouse drag left/right = roll. Attempt 1 below; retries logged if needed.
-
---- ATTEMPT 1 ---
-start: phase=fly alt=2800 spd=98 hdg=345 rings=3050ft@1.5nm, 3650ft@2.4nm, 3650ft@3.3nm, 3600ft@4.2nm
-t=1s alt=2800 spd=100 hdg=345 ring=1/4 dist=0.02 fuel=100 timeLeft=225s
-t=16s alt=2921 spd=132 hdg=345 ring=1/4 dist=0.56 fuel=96 timeLeft=210s
-t=31s alt=2921 spd=132 hdg=345 ring=1/4 dist=1.11 fuel=93 timeLeft=195s
-ring 1: PASSED alt=2921 (target 3050) hdg=345 (target -15) lat=0 coins=25 t=41s
-t=46s alt=3206 spd=132 hdg=354 ring=2/4 dist=1.67 fuel=89 timeLeft=180s
-t=61s alt=3524 spd=132 hdg=356 ring=2/4 dist=2.22 fuel=86 timeLeft=165s
-ring 2: PASSED alt=3524 (target 3650) hdg=355 (target -5) lat=-0.01 coins=53 t=66s
-t=76s alt=3524 spd=132 hdg=344 ring=3/4 dist=2.77 fuel=82 timeLeft=150s
-ring 3: PASSED alt=3524 (target 3650) hdg=344 (target -16) lat=0 coins=83 t=90s
-t=91s alt=3524 spd=132 hdg=347 ring=4/4 dist=3.33 fuel=78 timeLeft=135s
-t=106s alt=3524 spd=132 hdg=359 ring=4/4 dist=3.88 fuel=75 timeLeft=120s
-ring 4: PASSED alt=3524 (target 3600) hdg=358 (target -2) lat=-0.01 coins=116 t=115s
-t=121s alt=3173 spd=107 hdg=358 ring=5/4 dist=4.4 fuel=72 timeLeft=105s
-t=136s alt=2332 spd=107 hdg=358 ring=5/4 dist=4.84 fuel=69 timeLeft=89s
-t=151s alt=1492 spd=107 hdg=358 ring=5/4 dist=5.29 fuel=66 timeLeft=74s
-t=166s alt=649 spd=107 hdg=358 ring=5/4 dist=5.74 fuel=63 timeLeft=59s
-t=181s alt=252 spd=95 hdg=358 ring=5/4 dist=6.17 fuel=60 timeLeft=44s
-t=196s alt=252 spd=70 hdg=358 ring=5/4 dist=6.56 fuel=58 timeLeft=29s
-t=211s alt=252 spd=70 hdg=358 ring=5/4 dist=6.85 fuel=55 timeLeft=14s
-END attempt 1: phase=timeout rings=4/4 missed=0 time=225s timeLeft=0s coins=116 fuel=53 alt=252 spd=70 msg="ALL RINGS DONE — land on the runway!" consoleErrors=[]
-Attempt 1 did not land with all rings — retrying once with tighter deadbands (note: same driver, corrected inputs).
---- ATTEMPT 2 ---
-start: phase=fly alt=2800 spd=98 hdg=4 rings=3150ft@1.5nm, 3450ft@2.4nm, 3850ft@3.3nm, 3800ft@4.2nm
-t=1s alt=2800 spd=100 hdg=4 ring=1/4 dist=0.02 fuel=100 timeLeft=225s
-
---- RERUN with corrected driver (landing target 60 ft, deadband 60 on final, approach throttle 0.6) ---
-
---- ATTEMPT 1 ---
-start: phase=fly alt=2800 spd=98 hdg=2 rings=3450ft@1.5nm, 3150ft@2.4nm, 3650ft@3.3nm, 3600ft@4.2nm
-t=1s alt=2800 spd=99 hdg=2 ring=1/4 dist=0.02 fuel=100 timeLeft=225s
-t=16s alt=3321 spd=132 hdg=2 ring=1/4 dist=0.56 fuel=96 timeLeft=210s
-t=31s alt=3321 spd=132 hdg=2 ring=1/4 dist=1.12 fuel=93 timeLeft=195s
-ring 1: PASSED alt=3321 (target 3450) hdg=2 (target 2) lat=0 coins=25 t=41s
-t=46s alt=3281 spd=132 hdg=352 ring=2/4 dist=1.67 fuel=89 timeLeft=180s
-t=61s alt=3281 spd=132 hdg=352 ring=2/4 dist=2.22 fuel=86 timeLeft=165s
-ring 2: PASSED alt=3281 (target 3150) hdg=352 (target -8) lat=0.01 coins=53 t=66s
-t=76s alt=3521 spd=132 hdg=7 ring=3/4 dist=2.78 fuel=82 timeLeft=149s
-ring 3: PASSED alt=3521 (target 3650) hdg=7 (target 7) lat=-0.01 coins=83 t=90s
-t=91s alt=3521 spd=132 hdg=3 ring=4/4 dist=3.33 fuel=78 timeLeft=134s
-t=106s alt=3521 spd=132 hdg=351 ring=4/4 dist=3.88 fuel=75 timeLeft=119s
-ring 4: PASSED alt=3521 (target 3600) hdg=351 (target -9) lat=0 coins=116 t=115s
-t=121s alt=3164 spd=109 hdg=351 ring=5/4 dist=4.4 fuel=72 timeLeft=104s
-t=136s alt=2308 spd=109 hdg=351 ring=5/4 dist=4.86 fuel=69 timeLeft=89s
-t=151s alt=1450 spd=109 hdg=351 ring=5/4 dist=5.31 fuel=66 timeLeft=74s
-t=166s alt=592 spd=109 hdg=351 ring=5/4 dist=5.77 fuel=63 timeLeft=59s
-t=181s alt=101 spd=109 hdg=351 ring=5/4 dist=6.23 fuel=60 timeLeft=44s
-t=196s alt=101 spd=72 hdg=351 ring=5/4 dist=6.62 fuel=57 timeLeft=29s
-END attempt 1: phase=landed rings=4/4 missed=0 time=208s timeLeft=18s coins=200 fuel=55 alt=0 spd=0 msg="LANDED! +50 coins +34 time bonus" consoleErrors=[]
-
-FINAL: phase=landed rings=4/4 time=208s coins=200 fuel=55 consoleErrors=0
-
-NOTE: the "ATTEMPT 2" stub above (start + t=1s only, no result) is the run
-killed mid-flight so the driver could be fixed after attempt 1 timed out;
-it is not a result. The rerun below it is the corrected run.
+HUMAN M1 (v3, CDP keyboard + held mouse-drag, HUD-steered 10 Hz, seed 1):
+phase=landed rings=4/4 time=168s coins=280 fuel=55 msg=LANDED! +50 coins +114 time bonus
+t=37s ring 1/4 alt=3596 spd=150 fuel=90
+t=58s ring 2/4 alt=3316 spd=150 fuel=84
+t=80s ring 3/4 alt=3638 spd=150 fuel=79
+t=102s ring 4/4 alt=3739 spd=150 fuel=73
+console errors: none

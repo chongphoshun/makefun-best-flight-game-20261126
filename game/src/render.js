@@ -1,8 +1,15 @@
 // Nusantara Sky Courier — all drawing. One 1280x720 logical canvas: a chase
 // view over recognisable Indonesian terrain, the plane in frame, a lit cockpit
 // panel with live instruments, and a HUD with ALT / SPD / HDG always visible.
+//
+// v3: the 3D world is REAL 3D — raw WebGL1 (webgl3d.js, no library, no
+// network) on the #scene canvas underneath, with the 2D canvas on top for
+// HUD/cockpit/panels/weather. If WebGL is unavailable the v2 2D scene below
+// (drawSky/drawGround/drawRingsAndRunway/drawPlane) is the fallback, so the
+// game never goes black.
 import { FIELD, FONT, PALETTE, AIRCRAFT, MISSIONS, UPGRADES } from './config.js';
 import { headingDiff } from './world.js';
+import { createScene3D } from './webgl3d.js';
 
 export const SCREEN_TITLE = 'title';
 export const SCREEN_PLAY = 'play';
@@ -16,6 +23,16 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
 export function createRenderer(canvas) {
   const ctx = canvas.getContext('2d');
+  // v3: WebGL scene on the #scene canvas behind this overlay canvas.
+  let scene3d = null;
+  try {
+    const sceneCanvas = document.getElementById('scene');
+    if (sceneCanvas) scene3d = createScene3D(sceneCanvas);
+  } catch {
+    scene3d = null;
+  }
+  window.__gl3d = !!scene3d;
+  window.__glFallback = !scene3d;
   let scale = 1;
   let ox = 0;
   let oy = 0;
@@ -670,7 +687,7 @@ export function createRenderer(canvas) {
     ctx.stroke();
     text('NUSANTARA', 1112, 122, 26, '#f2c94c', 'center', true);
     text('SKY COURIER', 1112, 150, 26, '#eaf6ff', 'center', true);
-    text('v2 · 7 islands · 12 missions', 1112, 172, 11, '#9db8c9', 'center');
+    text('v3 · REAL 3D · 7 islands · 12 missions', 1112, 172, 11, '#9db8c9', 'center');
     text('3 aircraft · 8 upgrades · 4 modes', 1112, 188, 11, '#9db8c9', 'center');
     text('Fly the rings, deliver the cargo,', 1112, 218, 13, '#eaf6ff', 'center');
     text('land on the runway.', 1112, 236, 13, '#eaf6ff', 'center');
@@ -762,17 +779,63 @@ export function createRenderer(canvas) {
     text('P resume · R restart · Esc menu', 640, 300, 16, '#9db8c9', 'center');
   }
 
+  // v3: in WebGL mode the rings/runway are 3D meshes; only their labels are
+  // 2D — projected from the 3D scene to logical screen coordinates.
+  function drawLabels3D(state) {
+    if (!scene3d) return;
+    const landing = state.ringIndex >= state.rings.length;
+    const ring = state.rings[state.ringIndex];
+    if (ring && !landing) {
+      const d = ring.dist - state.dist;
+      if (d > 0 && d <= 6) {
+        const p = scene3d.project(0, ring.alt * 0.3048, -d * 1852);
+        if (p) {
+          // Both label lines sit ABOVE the ring: the plane flies under the
+          // ring, so a label below it lands on the fuselage.
+          text(`RING ${state.ringIndex + 1}`, p.x, p.y - 108, 15, '#fff', 'center', true);
+          text(`${fmt(ring.alt)} ft · ${d.toFixed(1)} nm`, p.x, p.y - 88, 13, '#fff', 'center');
+        }
+      }
+    }
+    if (landing) {
+      const d = state.runwayDist - state.dist;
+      if (d > -0.2 && d < 7) {
+        const p = scene3d.project(0, 4, -d * 1852);
+        if (p) {
+          // Runway label ABOVE the strip: the plane flies low over the runway
+          // on approach, and a label below the projected point lands on the
+          // fuselage.
+          text(`RUNWAY · ${d.toFixed(1)} nm — HDG ${String(Math.round(((state.runwayHeading % 360) + 360) % 360)).padStart(3, '0')}°`, p.x, p.y - 34, 16, '#fff', 'center', true);
+        }
+      }
+    }
+  }
+
   function draw(state, screen, ui) {
     ui.rects = ui.rects || {};
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle = '#0b1c2c';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // v3: in WebGL mode the overlay canvas stays transparent so the 3D
+    // scene shows through; the opaque fill is only for the 2D fallback.
+    const use3d = !!scene3d && !window.__force2d;
+    if (!use3d) {
+      ctx.fillStyle = '#0b1c2c';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    } else {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
     ctx.setTransform(scale, 0, 0, scale, ox, oy);
     const horizonY = clamp(300 + state.pitch * 3, 190, 430);
-    drawSky(state, horizonY);
-    drawGround(state, horizonY);
-    drawRingsAndRunway(state, horizonY);
-    drawPlane(state);
+    let sceneOk = false;
+    if (use3d) sceneOk = scene3d.draw(state);
+    if (use3d && sceneOk) {
+      drawLabels3D(state);
+    } else {
+      // 2D fallback: the v2 scene (sky, ground, rings, plane).
+      drawSky(state, horizonY);
+      drawGround(state, horizonY);
+      drawRingsAndRunway(state, horizonY);
+      drawPlane(state);
+    }
     drawWeather(state);
     if (screen === SCREEN_TITLE) {
       drawHud(state, ui);
