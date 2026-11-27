@@ -98,10 +98,10 @@ function terrainHeight(ax, as, region) {
   h += wall * (0.6 + 0.4 * fbm(ax * 0.0006 + 7, as * 0.0006, seed + 3));
   if (p.cone) h += p.cone.h * gauss(ax - p.cone.x, as - p.cone.z, p.cone.r);
   if (p.karst) {
-    for (let i = 0; i < 6; i += 1) {
-      const kx = (hash2(i, 11, seed) - 0.5) * 3600;
+    for (let i = 0; i < 8; i += 1) {
+      const kx = (hash2(i, 11, seed) - 0.5) * 2400;
       const kz = 1200 + i * 1300 + hash2(i, 23, seed) * 500;
-      h += (280 + hash2(i, 37, seed) * 220) * gauss(ax - kx, as - kz, 110 + hash2(i, 41, seed) * 60);
+      h += (350 + hash2(i, 37, seed) * 270) * gauss(ax - kx, as - kz, 130 + hash2(i, 41, seed) * 70);
     }
   }
   if (p.island) h += 260 * gauss(ax - 350, as - 4200, 950);
@@ -128,8 +128,8 @@ function terrainColor(ax, as, h, slope, region) {
     lerp(ground[1], far[1], ft),
     lerp(ground[2], far[2], ft),
   ];
-  if (p.water && h < 3) c = [0.85, 0.77, 0.56]; // thin sand fringe at the waterline
-  if (p.beach && h < 14) c = [0.95, 0.63, 0.71]; // pink beach
+  if (p.water && h < 9) c = [0.92, 0.85, 0.62]; // wide sand fringe at the waterline
+  if (p.beach && h < 22) c = [0.95, 0.63, 0.71]; // pink beach
   if (p.river) {
     const xr = 380 * Math.sin(as * 0.00035 + 1.2);
     if (Math.abs(ax - xr) < 70) c = hexRgb(region.water);
@@ -153,13 +153,21 @@ function terrainColor(ax, as, h, slope, region) {
   // bare grass — a second noise field tints patches deep green, so the
   // ground has vegetation zones visible from altitude.
   if (h > 15 && h < 520 && slope < 0.35) {
-    const forest = fbm(ax * 0.004 + 53, as * 0.004 + 29, regionSeed(region.id) + 21);
+    const forest = fbm(ax * 0.012 + 53, as * 0.012 + 29, regionSeed(region.id) + 21);
     const t = smoothstep(0.55, 0.78, forest) * 0.55;
     c = [lerp(c[0], 0.10, t), lerp(c[1], 0.42, t), lerp(c[2], 0.16, t)];
   }
+  // Rock speckle (v5): high ground gets fine dark/light variation so a big
+  // cone or karst face reads as textured rock, not one smooth grey mass.
+  if (h > 450) {
+    const sp = 0.82 + 0.36 * vnoise(ax * 0.05 + 7, as * 0.05 + 3, regionSeed(region.id) + 5);
+    c = [clamp(c[0] * sp, 0, 1), clamp(c[1] * sp, 0, 1), clamp(c[2] * sp, 0, 1)];
+  }
   // Patchiness: a second noise breaks the flat colour into grass/forest
   // patches, so the ground reads as terrain, not a painted backdrop.
-  const patch = 0.78 + 0.44 * fbm(ax * 0.008 + 31, as * 0.008 + 17, regionSeed(region.id) + 9);
+  // v5: frequency x2.5 (50 m patches) — the v4 125 m patches blurred into
+  // one wash at screenshot scale.
+  const patch = 0.78 + 0.44 * fbm(ax * 0.02 + 31, as * 0.02 + 17, regionSeed(region.id) + 9);
   return [clamp(c[0] * patch, 0, 1), clamp(c[1] * patch, 0, 1), clamp(c[2] * patch, 0, 1)];
 }
 
@@ -492,7 +500,7 @@ function buildAircraft(colorHex, isJet) {
   const body = hexRgb(colorHex);
   const light = [0.88, 0.91, 0.94];
   const dark = [0.55, 0.62, 0.70];
-  const glass = [0.08, 0.19, 0.29];
+  const glass = [0.04, 0.10, 0.18]; // v5: canopy much darker, reads as glass
   // Fuselage: nose pyramid (tip at -Z) + cabin box + tail boom.
   const nose = [0, 0, -7.2];
   const ring = [];
@@ -504,26 +512,42 @@ function buildAircraft(colorHex, isJet) {
   m.box(0, 0, -1.2, 1.7, 1.7, 7.2, body); // cabin
   m.box(0, 0.1, 3.4, 1.1, 1.1, 2.6, body); // tail boom
   m.box(0, 0.75, -1.6, 0.9, 0.7, 2.2, glass); // canopy
+  // Panel lines (v5): dark rings around the fuselage at the panel joints,
+  // slightly proud of the cabin wall so they render instead of z-fighting
+  // it, plus a dark spine stripe — the v4 fuselage was one flat colour and
+  // read as a toy block. A panelled fuselage reads as a built aircraft.
+  const panelLine = [0.22, 0.25, 0.29];
+  m.box(0, 0, -3.4, 1.78, 1.78, 0.16, panelLine);
+  m.box(0, 0, 0.9, 1.78, 1.78, 0.16, panelLine);
+  m.box(0, 0.88, -1.2, 0.34, 0.08, 6.0, panelLine);
   // Two-tone: a darker belly box under the cabin, so the fuselage reads as
   // a designed aircraft (light top, dark underside) instead of one flat
   // colour from the chase view.
   m.box(0, -0.75, -1.2, 1.5, 0.5, 6.0, [0.32, 0.36, 0.41]);
   // Cheatline: a thin gold stripe along each fuselage side, slightly proud
-  // of the cabin wall so it renders instead of z-fighting it.
+  // of the cabin wall so it renders instead of z-fighting it. v5: twice as
+  // tall and prouder — the v4 stripe vanished at screenshot distance.
   const gold = [0.95, 0.75, 0.25];
-  m.box(-0.87, 0.15, -1.2, 0.06, 0.25, 6.4, gold);
-  m.box(0.87, 0.15, -1.2, 0.06, 0.25, 6.4, gold);
+  m.box(-0.9, 0.15, -1.2, 0.1, 0.5, 6.8, gold);
+  m.box(0.9, 0.15, -1.2, 0.1, 0.5, 6.8, gold);
   // Main wings (thin boxes with slight dihedral so they read as wings from
   // behind, not edge-on lines) + tailplane + fin.
   m.box(-3.7, 0.5, -0.9, 6.2, 0.28, 1.7, light);
   m.box(3.7, 0.5, -0.9, 6.2, 0.28, 1.7, light);
+  // Wingtip gold stripes (v5): the wing ends read as designed, not cut off.
+  m.box(-6.4, 0.66, -0.9, 1.2, 0.08, 1.7, gold);
+  m.box(6.4, 0.66, -0.9, 1.2, 0.08, 1.7, gold);
   m.box(-1.5, 0.3, 4.8, 2.4, 0.22, 1.1, dark);
   m.box(1.5, 0.3, 4.8, 2.4, 0.22, 1.1, dark);
-  m.quad([-0.12, 0.6, 4.4], [0.12, 0.6, 4.4], [0.12, 2.0, 5.2], [-0.12, 2.0, 5.2], body);
-  m.quad([0.12, 0.6, 4.4], [-0.12, 0.6, 4.4], [-0.12, 2.0, 5.2], [0.12, 2.0, 5.2], body);
-  // Wingtip nav lights (emissive handled by colour brightness).
-  m.box(-6.8, 0.9, 0.1, 0.3, 0.3, 0.3, [1, 0.2, 0.2]);
-  m.box(6.8, 0.9, 0.1, 0.3, 0.3, 0.3, [0.2, 1, 0.4]);
+  // Fin (v5 fix 3): light, not body-yellow — the yellow fin's sun-facing
+  // side shaded to a brown plank in every close shot. A light fin reads
+  // as part of the wing set instead of a board bolted to the tail.
+  // v5 fix 4: shorter (top 1.7, was 2.0) — the tall fin read as a sail.
+  m.quad([-0.12, 0.6, 4.6], [0.12, 0.6, 4.6], [0.12, 1.7, 5.2], [-0.12, 1.7, 5.2], light);
+  m.quad([0.12, 0.6, 4.6], [-0.12, 0.6, 4.6], [-0.12, 1.7, 5.2], [0.12, 1.7, 5.2], light);
+  // Wingtip nav lights (emissive handled by colour brightness). v5: bigger.
+  m.box(-6.8, 0.9, 0.1, 0.5, 0.5, 0.5, [1, 0.2, 0.2]);
+  m.box(6.8, 0.9, 0.1, 0.5, 0.5, 0.5, [0.2, 1, 0.4]);
   if (isJet) {
     m.box(0, 0, 5.0, 0.9, 0.9, 0.8, [0.15, 0.15, 0.18]);
     m.box(0, 0, 5.5, 0.5, 0.5, 0.4, [1, 0.75, 0.3]);
@@ -537,10 +561,10 @@ function buildAircraft(colorHex, isJet) {
 function buildCanopyGlint() {
   const m = new Mesh();
   m.quad(
-    [-0.30, 1.16, -2.45],
-    [0.10, 1.16, -2.45],
-    [0.30, 1.16, -0.75],
-    [-0.10, 1.16, -0.75],
+    [-0.42, 1.16, -2.45],
+    [0.14, 1.16, -2.45],
+    [0.42, 1.16, -0.75],
+    [-0.14, 1.16, -0.75],
     [1, 1, 1],
   );
   return m;
@@ -558,11 +582,11 @@ function buildLandmarks(region) {
   }
   if (p.karst) {
     const seed = regionSeed(region.id);
-    for (let i = 0; i < 6; i += 1) {
-      const kx = (hash2(i, 11, seed) - 0.5) * 3600;
+    for (let i = 0; i < 8; i += 1) {
+      const kx = (hash2(i, 11, seed) - 0.5) * 2400;
       const kz = 1200 + i * 1300 + hash2(i, 23, seed) * 500;
-      const h = 280 + hash2(i, 37, seed) * 220;
-      const r = 110 + hash2(i, 41, seed) * 60;
+      const h = 350 + hash2(i, 37, seed) * 270;
+      const r = 130 + hash2(i, 41, seed) * 70;
       const m = new Mesh();
       m.cylinder(0, 0, 0, r * 0.7, h, 8, [0.12, 0.48, 0.37]);
       m.cone(0, h, 0, r * 0.7, 60, 8, [0.18, 0.68, 0.48]);
@@ -603,20 +627,59 @@ function buildLandmarks(region) {
   // exactly on the terrain grid. `span` is the mesh's half-length in z —
   // the draw cull widens by it, or a long mesh would vanish while part of
   // it is still in frame.
+  // v5: trees are 2-3x taller (26-48 m near the flight path) and denser
+  // (~110 total, half of them in a near band 180-850 m off the centreline)
+  // — v4's 13-24 m trees were ~5 px dots at screenshot scale. Villages
+  // are bigger (16-24 m houses, 9 m walls, 8 m pyramid roofs) and closer
+  // to the path (350-1100 m), with a 4th cluster near the runway zone, so
+  // white walls + terracotta roofs read >= 20 px in the frame.
   {
     const seed = regionSeed(region.id);
     const treeMesh = new Mesh();
     let trees = 0;
-    // Band covers the whole mission (runways sit ~15-26 km down-course),
-    // not just the first 11 km — the v4 first pass put every tree behind
-    // the landing point, so the landed shot showed bare grass.
-    for (let i = 0; i < 220 && trees < 60; i += 1) {
-      const ax = (hash2(i, 3, seed) - 0.5) * 4200;
-      if (Math.abs(ax) < 160) continue; // keep the centreline clear
+    // Near band first: trees the camera actually passes, big enough to read.
+    for (let i = 0; i < 160 && trees < 55; i += 1) {
+      const ax = (hash2(i, 3, seed) - 0.5) * 1700;
+      if (Math.abs(ax) < 180 || Math.abs(ax) > 850) continue; // clear of the centreline, close to it
       const as = 500 + hash2(i, 5, seed) * 25500;
       const h = terrainHeight(ax, as, region);
       if (h < 2 || h > 700) continue; // not in water, not on a peak
-      const s = 0.8 + hash2(i, 7, seed) * 0.7;
+      const s = 1.6 + hash2(i, 7, seed) * 1.0;
+      const th = 16 * s;
+      const tr = 6.5 * s;
+      const lz = 13250 - as;
+      treeMesh.cylinder(ax, h, lz, 1.1 * s, 5 * s, 5, [0.35, 0.24, 0.14]);
+      treeMesh.cone(ax, h + 4 * s, lz, tr, th, 6, [0.10, 0.38, 0.16]);
+      treeMesh.cone(ax, h + 4 * s + th * 0.55, lz, tr * 0.62, th * 0.7, 6, [0.14, 0.46, 0.20]);
+      trees += 1;
+    }
+    // Far band: the v4 spread, scaled up 1.5x so the horizon has texture.
+    for (let i = 0; i < 220 && trees < 110; i += 1) {
+      const ax = (hash2(i, 103, seed) - 0.5) * 4200;
+      if (Math.abs(ax) < 160) continue; // keep the centreline clear
+      const as = 500 + hash2(i, 105, seed) * 25500;
+      const h = terrainHeight(ax, as, region);
+      if (h < 2 || h > 700) continue; // not in water, not on a peak
+      const s = 1.2 + hash2(i, 107, seed) * 0.8;
+      const th = 16 * s;
+      const tr = 6.5 * s;
+      const lz = 13250 - as;
+      treeMesh.cylinder(ax, h, lz, 1.1 * s, 5 * s, 5, [0.35, 0.24, 0.14]);
+      treeMesh.cone(ax, h + 4 * s, lz, tr, th, 6, [0.10, 0.38, 0.16]);
+      treeMesh.cone(ax, h + 4 * s + th * 0.55, lz, tr * 0.62, th * 0.7, 6, [0.14, 0.46, 0.20]);
+      trees += 1;
+    }
+    // Runway-zone cluster (v5 fix 2): the v5 first pass put trees along
+    // the whole course but almost none in the 13-20 km runway zone, so the
+    // landed shot showed bare ground. ~25 big trees flanking the approach
+    // and the runway, so the end shot has trees at the horizon.
+    for (let i = 0; i < 80 && trees < 135; i += 1) {
+      const ax = (hash2(i, 203, seed) - 0.5) * 1400;
+      if (Math.abs(ax) < 200 || Math.abs(ax) > 700) continue;
+      const as = 13000 + hash2(i, 205, seed) * 7000;
+      const h = terrainHeight(ax, as, region);
+      if (h < 2 || h > 700) continue;
+      const s = 1.6 + hash2(i, 207, seed) * 1.0;
       const th = 16 * s;
       const tr = 6.5 * s;
       const lz = 13250 - as;
@@ -626,22 +689,24 @@ function buildLandmarks(region) {
       trees += 1;
     }
     if (trees) items.push({ mesh: treeMesh, x: 0, y: 0, z: -13250, span: 12750 });
-    // Villages: 3 clusters of white houses with terracotta pyramid roofs.
+    // Villages: 5 clusters of white houses with terracotta pyramid roofs.
     // A cluster is kept only when >= 4 of its houses land on dry ground.
-    for (let k = 0; k < 3; k += 1) {
-      const vx = (k % 2 ? 1 : -1) * (520 + hash2(k, 21, seed) * 900);
-      const vas = 1800 + k * 7000 + hash2(k, 23, seed) * 800;
+    // v5 fix 2: clusters spread 1800-19400 so the 5th sits just past the
+    // runway — the v4 4th cluster (16 km) sat BEHIND the landed plane.
+    for (let k = 0; k < 5; k += 1) {
+      const vx = (k % 2 ? 1 : -1) * (350 + hash2(k, 21, seed) * 750);
+      const vas = 1800 + k * 4200 + hash2(k, 23, seed) * 800;
       const vilMesh = new Mesh();
       let houses = 0;
-      for (let i = 0; i < 40 && houses < 8; i += 1) {
+      for (let i = 0; i < 50 && houses < 10; i += 1) {
         const hx = vx + (hash2(k * 40 + i, 25, seed) - 0.5) * 240;
         const has = vas + (hash2(k * 40 + i, 27, seed) - 0.5) * 240;
         const h = terrainHeight(hx, has, region);
         if (h < 2 || h > 400) continue;
-        const w = 7 + hash2(k * 40 + i, 29, seed) * 4;
+        const w = 16 + hash2(k * 40 + i, 29, seed) * 8;
         const lz = vas - has;
-        vilMesh.box(hx, h + 1, lz, w, 6, w, [0.93, 0.92, 0.88]);
-        vilMesh.cone(hx, h + 4, lz, w * 0.75, 4.5, 4, [0.72, 0.36, 0.20]);
+        vilMesh.box(hx, h + 4.5, lz, w, 9, w, [0.93, 0.92, 0.88]);
+        vilMesh.cone(hx, h + 9, lz, w * 0.75, 8, 4, [0.72, 0.36, 0.20]);
         houses += 1;
       }
       if (houses >= 4) items.push({ mesh: vilMesh, x: 0, y: 0, z: -vas, span: 200 });
@@ -684,8 +749,9 @@ function makeBlobTexture(gl) {
 // the region's sky colour mid-frame, pale haze at the horizon — drawn on
 // a far billboard so the upper half of the frame has depth instead of a
 // flat clear colour. Built per region (skies differ: clear blue, storm
-// orange) and cached.
-function makeSkyTexture(gl, skyHex) {
+// orange) and cached. v5: a dusk variant (deep indigo -> burnt orange ->
+// pale gold) for the sunset shot.
+function makeSkyTexture(gl, skyHex, dusk) {
   const c = document.createElement('canvas');
   c.width = 16;
   c.height = 256;
@@ -693,9 +759,16 @@ function makeSkyTexture(gl, skyHex) {
   const top = hexRgb(skyHex);
   const rgb = (r, g, b) => `rgb(${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)})`;
   const g = x.createLinearGradient(0, 0, 0, 256);
-  g.addColorStop(0, rgb(top[0] * 0.5, top[1] * 0.58, top[2] * 0.85));
-  g.addColorStop(0.55, rgb(top[0], top[1], top[2]));
-  g.addColorStop(1, 'rgb(238,244,248)');
+  if (dusk) {
+    g.addColorStop(0, 'rgb(38,48,102)');
+    g.addColorStop(0.42, 'rgb(214,110,52)');
+    g.addColorStop(0.62, 'rgb(242,163,94)');
+    g.addColorStop(1, 'rgb(250,213,165)');
+  } else {
+    g.addColorStop(0, rgb(top[0] * 0.5, top[1] * 0.58, top[2] * 0.85));
+    g.addColorStop(0.55, rgb(top[0], top[1], top[2]));
+    g.addColorStop(1, 'rgb(238,244,248)');
+  }
   x.fillStyle = g;
   x.fillRect(0, 0, 16, 256);
   const tex = gl.createTexture();
@@ -719,12 +792,13 @@ function makePropDiscTexture(gl) {
   const x = c.getContext('2d');
   const cx = 64;
   const cy = 64;
-  // Soft ring, brightest where the blade tips sweep (~60% radius).
+  // Soft ring, brightest where the blade tips sweep (~60% radius). v5:
+  // peak 0.38 (was 0.28) — the v4 disc was nearly invisible in stills.
   const ring = x.createRadialGradient(cx, cy, 18, cx, cy, 62);
   ring.addColorStop(0, 'rgba(235,240,245,0)');
-  ring.addColorStop(0.45, 'rgba(235,240,245,0.10)');
-  ring.addColorStop(0.62, 'rgba(235,240,245,0.28)');
-  ring.addColorStop(0.8, 'rgba(235,240,245,0.12)');
+  ring.addColorStop(0.45, 'rgba(235,240,245,0.14)');
+  ring.addColorStop(0.62, 'rgba(235,240,245,0.38)');
+  ring.addColorStop(0.8, 'rgba(235,240,245,0.16)');
   ring.addColorStop(1, 'rgba(235,240,245,0)');
   x.fillStyle = ring;
   x.fillRect(0, 0, 128, 128);
@@ -821,13 +895,13 @@ function makeWaveTexture(gl) {
   c.width = 128;
   c.height = 128;
   const x = c.getContext('2d');
-  x.fillStyle = '#8fa8bc';
-  x.fillRect(0, 0, 128, 128);
-  for (let k = 0; k < 26; k += 1) {
+  x.fillStyle = '#dfe9f0'; // v5 fix 3: near-white base — the tile multiplies
+  x.fillRect(0, 0, 128, 128); // the region water colour, so the sea reads as
+  for (let k = 0; k < 26; k += 1) { // the region's own blue, not dark navy
     const y = hash2(k, 3, 11) * 128;
     const len = 20 + hash2(k, 5, 11) * 90;
     const x0 = hash2(k, 7, 11) * 128;
-    x.fillStyle = hash2(k, 9, 11) > 0.5 ? 'rgba(220,236,244,0.55)' : 'rgba(70,100,125,0.5)';
+    x.fillStyle = hash2(k, 9, 11) > 0.5 ? 'rgba(255,255,255,0.5)' : 'rgba(90,120,145,0.3)';
     x.fillRect(x0, y, len, 2 + hash2(k, 11, 11) * 3);
   }
   const tex = gl.createTexture();
@@ -919,9 +993,10 @@ export function createScene3D(canvas) {
   const propDiscTex = makePropDiscTexture(gl);
   const detailTex = makeDetailTexture(gl);
   const skyTexCache = {};
-  function skyTexture(region) {
-    if (!skyTexCache[region.id]) skyTexCache[region.id] = makeSkyTexture(gl, region.sky);
-    return skyTexCache[region.id];
+  function skyTexture(region, dusk) {
+    const key = dusk ? `${region.id}:dusk` : region.id;
+    if (!skyTexCache[key]) skyTexCache[key] = makeSkyTexture(gl, dusk ? '#e8845a' : region.sky, dusk);
+    return skyTexCache[key];
   }
   // The detail sampler lives on texture unit 0 for the colour program.
   gl.useProgram(progC);
@@ -942,8 +1017,8 @@ export function createScene3D(canvas) {
   runwayMesh.box(0, 0, 0, 45, 1.5, 600, [0.23, 0.25, 0.28]);
   for (let i = -5; i <= 5; i += 1) runwayMesh.box(0, 0.9, i * 50, 3, 0.4, 22, [0.95, 0.95, 0.95]);
   for (let i = -6; i <= 6; i += 1) {
-    runwayMesh.box(-21, 0.9, i * 45, 2.5, 1, 2.5, [1, 0.79, 0.3]);
-    runwayMesh.box(21, 0.9, i * 45, 2.5, 1, 2.5, [1, 0.79, 0.3]);
+    runwayMesh.box(-21, 0.9, i * 45, 1.2, 1, 1.2, [1, 0.79, 0.3]);
+    runwayMesh.box(21, 0.9, i * 45, 1.2, 1, 1.2, [1, 0.79, 0.3]);
   }
   const runwayGeo = uploadStatic(gl, runwayMesh);
   // Water plane (unit quad, scaled in draw).
@@ -1101,20 +1176,40 @@ export function createScene3D(canvas) {
     const proj = mat4Perspective((55 * Math.PI) / 180, aspect, 0.5, 9000);
     const rollRad = (state.roll * Math.PI) / 180;
     const up = [Math.sin(-rollRad * 0.15), Math.cos(rollRad * 0.15), 0];
-    // v4: 3/4 chase camera — offset to the side (~20 deg) and slightly
-    // closer, so the cheatline, canopy glint, prop disc and the aircraft's
-    // side read in the frame instead of a flat rear view. The plane sits
-    // left of centre with the next ring and the world ahead on the right.
-    const eye = [7.5, altM + 5.5, 21];
-    const center = [0, altM - 2 + state.pitch * 0.08, -45];
+    // v5: staged cameras, set per shot by shots.js via state.camMode.
+    // 'close' pulls the camera in (plane ~1.6x bigger, more world ahead);
+    // 'low' drops it near the ground and tilts down (ground rush, karst
+    // towers loom); 'wide' pulls back for a banked plane that would
+    // otherwise crop out of frame; 'landed' raises the camera and aims
+    // level so a parked plane sits mid-frame instead of clipped by the
+    // cockpit panel. 'default' is the v4 3/4 chase camera.
+    const groundY = terrainHeight(latM, sPlane, region);
+    // Landed plane: state.alt is 0 but the terrain under it can be 30 m
+    // up — the v4 landed shot parked the plane on grass 0.3 nm short of a
+    // floating runway slab. planeY grounds the aircraft AND the camera on
+    // the real terrain, so a staged landing sits ON the runway slab.
+    const planeY = state.phase === 'landed' ? groundY + 1.2 : altM;
+    const camMode = state.camMode || 'default';
+    const eye = camMode === 'low' ? [6, planeY + 3.5, 16]
+      : camMode === 'close' ? [7, planeY + 4.5, 17]
+        : camMode === 'wide' ? [8.5, planeY + 6.5, 25]
+          : camMode === 'landed' ? [8, planeY + 9, 26]
+            : [7.5, planeY + 5.5, 21];
+    const center = camMode === 'low' ? [0, planeY - 6 + state.pitch * 0.08, -35]
+      : camMode === 'close' ? [0, planeY - 2 + state.pitch * 0.08, -42]
+        : camMode === 'wide' ? [0, planeY - 3 + state.pitch * 0.08, -50]
+          : camMode === 'landed' ? [0, planeY + 0.5 + state.pitch * 0.08, -48]
+            : [0, planeY - 2 + state.pitch * 0.08, -45];
     const view = mat4LookAt(eye, center, up);
     lastProj = proj;
     lastView = view;
 
-    const sky = hexRgb(region.sky);
-    const fogColor = [lerp(sky[0], 0.93, 0.35), lerp(sky[1], 0.96, 0.35), lerp(sky[2], 0.99, 0.35)];
+    const dusk = !!state.dusk;
+    const sky = hexRgb(dusk ? '#e8845a' : region.sky);
+    const fogColor = dusk ? [0.93, 0.72, 0.5]
+      : [lerp(sky[0], 0.93, 0.35), lerp(sky[1], 0.96, 0.35), lerp(sky[2], 0.99, 0.35)];
     const fogRange = FOG_BY_WEATHER[state.weatherId] || FOG_BY_WEATHER.clear;
-    const sunDir = [0.45, 0.75, 0.35];
+    const sunDir = dusk ? [0.55, 0.28, 0.35] : [0.45, 0.75, 0.35];
     gl.clearColor(sky[0], sky[1], sky[2], 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.enable(gl.DEPTH_TEST);
@@ -1126,7 +1221,7 @@ export function createScene3D(canvas) {
     // fog range sits beyond the quad so the gradient survives unfogged.
     {
       const sm = billboardModel(view, 0, altM + 1200, -8400, 22000, 9000);
-      drawTex(proj, view, sm, [1, 1, 1], 1, fogColor, [9000, 10000], skyTexture(region));
+      drawTex(proj, view, sm, [1, 1, 1], 1, fogColor, [9000, 10000], skyTexture(region, dusk));
     }
 
     // Water plane under the terrain (only for water regions). Textured with
@@ -1139,11 +1234,16 @@ export function createScene3D(canvas) {
       // so local Y maps to world Z: a real horizontal sea. (This was the
       // bug: the sea was a hairline at the horizon and the terrain's sand
       // colour showed through everywhere instead.)
+      // v5 fix 3: scale 11000 (was 14000) — the old plane's far edge sat
+      // 8800 m out, BEHIND the sky dome billboard (8400 m), so from a low
+      // landed camera the lake occluded the sky and the upper frame was
+      // solid dark water. At 11000 the far edge is 7300 m: sky shows above
+      // the lake, and the plane still covers the whole terrain grid.
       const wm = mat4Multiply(
         mat4Translate(-latM, 0.4, -1800),
-        mat4Multiply(mat4RotateX(-Math.PI / 2), mat4Scale(14000, 14000, 1)),
+        mat4Multiply(mat4RotateX(-Math.PI / 2), mat4Scale(11000, 11000, 1)),
       );
-      drawTex(proj, view, wm, hexRgb(region.water), 1, fogColor, fogRange, waveTex, [48, 48]);
+      drawTex(proj, view, wm, hexRgb(region.water), 1, fogColor, fogRange, waveTex, [64, 64]);
     }
 
     // Terrain: rebuild the grid around the plane every frame from absolute
@@ -1160,9 +1260,10 @@ export function createScene3D(canvas) {
         terrainPos[(j * TX + i) * 3] = lx;
         terrainPos[(j * TX + i) * 3 + 1] = h;
         terrainPos[(j * TX + i) * 3 + 2] = lz;
-        // Detail UVs from absolute course coords: one tile per 400 m.
-        terrainUV[(j * TX + i) * 2] = ax * 0.0025;
-        terrainUV[(j * TX + i) * 2 + 1] = as * 0.0025;
+        // Detail UVs from absolute course coords: one tile per ~167 m
+        // (v5, was 400 m) — finer grain at screenshot scale.
+        terrainUV[(j * TX + i) * 2] = ax * 0.006;
+        terrainUV[(j * TX + i) * 2 + 1] = as * 0.006;
       }
     }
     const dxStep = (TX1 - TX0) / (TX - 1);
@@ -1314,13 +1415,14 @@ export function createScene3D(canvas) {
       const yaw = (-(state.heading - state.courseHeading) * Math.PI) / 180;
       const pitch = (state.pitch * Math.PI) / 180;
       const roll = (state.roll * Math.PI) / 180;
-      const am = mat4Model(0, altM, 0, yaw, pitch, -roll, 1, 1, 1);
+      const am = mat4Model(0, planeY, 0, yaw, pitch, -roll, 1, 1, 1);
       drawColor(proj, view, am, aircraftGeo, false, 1, sunDir, fogColor, fogRange, 0.7);
       // Canopy glint: same model matrix, emissive white streak, translucent.
+      // v5: alpha 0.7 (was 0.45) — the v4 streak was invisible in stills.
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
       gl.depthMask(false);
-      drawColor(proj, view, am, glintGeo, true, 0.45, sunDir, fogColor, fogRange);
+      drawColor(proj, view, am, glintGeo, true, 0.7, sunDir, fogColor, fogRange);
       gl.depthMask(true);
       gl.disable(gl.BLEND);
       if (state.aircraft.id !== 'garuda') {
@@ -1338,13 +1440,15 @@ export function createScene3D(canvas) {
       // of a banking plane reads as motion; a level plane shows none. The
       // ribbon is a stretched blob quad in aircraft-local space: it starts
       // at the trailing edge (z=2) and runs 42 m behind the wingtip.
+      // v5: alpha 0.55 (was 0.32), wider — v4's trails were "very subtle",
+      // and white on a pale storm sky needs more body to read at all.
       if (Math.abs(state.roll) > 8) {
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
         gl.depthMask(false);
         for (const sx of [-6.8, 6.8]) {
-          const tm = mat4Multiply(am, mat4Multiply(mat4Translate(sx, 0.9, 23), mat4Multiply(mat4RotateX(Math.PI / 2), mat4Scale(2.5, 42, 1))));
-          drawTex(proj, view, tm, [1, 1, 1], 0.32, fogColor, fogRange, blobTex);
+          const tm = mat4Multiply(am, mat4Multiply(mat4Translate(sx, 0.9, 23), mat4Multiply(mat4RotateX(Math.PI / 2), mat4Scale(4.5, 42, 1))));
+          drawTex(proj, view, tm, [1, 1, 1], 0.55, fogColor, fogRange, blobTex);
         }
         gl.depthMask(true);
         gl.disable(gl.BLEND);
@@ -1354,32 +1458,46 @@ export function createScene3D(canvas) {
     // Clouds: anchored to absolute course position so they drift past.
     // v4: more of them (26 -> 40), lower and bigger, so the upper half of
     // the frame is sky with structure instead of empty gradient.
+    // v5: 48 clouds, 250-1350 m (some BELOW the plane at cruise altitude),
+    // 620-1220 m wide, so the sky has layers instead of a few blobs.
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     gl.depthMask(false);
     // Horizon haze (v4): a wide soft band where sky meets ground, so the
     // horizon is a layer of haze instead of a hard clear-colour edge.
+    // v5: stronger (0.3) and taller (600 m).
     {
-      const hm = billboardModel(view, 0, altM + 60, -3800, 15000, 420);
-      drawTex(proj, view, hm, [1, 1, 1], 0.22, fogColor, [9000, 10000]);
+      const hm = billboardModel(view, 0, altM + 60, -3800, 15000, 600);
+      drawTex(proj, view, hm, [1, 1, 1], 0.3, fogColor, [9000, 10000]);
     }
     const cloudAlpha = state.weatherId === 'fog' ? 0.5 : 0.85;
-    for (let k = 0; k < 40; k += 1) {
+    const cloudCol = dusk ? [1, 0.82, 0.62] : [1, 1, 1];
+    for (let k = 0; k < 48; k += 1) {
       const kz = k * 550 + hash2(k, 3, 99) * 300;
       const relZ = -(kz - sPlane);
       if (relZ < -4000 || relZ > 700) continue;
       const cx = (hash2(k, 5, 99) - 0.5) * 4200 - latM * 0.4;
-      const cy = 550 + hash2(k, 7, 99) * 900;
-      const sz = 420 + hash2(k, 9, 99) * 400;
+      const cy = 250 + hash2(k, 7, 99) * 1100;
+      const sz = 620 + hash2(k, 9, 99) * 600;
       const cm = billboardModel(view, cx, cy, relZ, sz, sz * 0.45);
-      drawTex(proj, view, cm, [1, 1, 1], cloudAlpha, fogColor, fogRange);
+      drawTex(proj, view, cm, cloudCol, cloudAlpha, fogColor, fogRange);
     }
     // Sun glow billboard, far ahead-LEFT and clear-weather only: a storm /
     // fog sky has no visible sun, and near the title panel the camera roll
-    // clipped the billboard into a triangle.
+    // clipped the billboard into a triangle. v5: bigger (850, was 550)
+    // with a wide faint halo; at dusk the sun sits low on the horizon.
     if (state.weatherId === 'clear') {
-      const sm = billboardModel(view, -1600, altM + 750, -3800, 550, 550);
-      drawTex(proj, view, sm, [1, 0.93, 0.62], 0.9, fogColor, [9000, 10000]);
+      if (dusk) {
+        const halo = billboardModel(view, -2200, planeY + 40, -3800, 1200, 1200);
+        drawTex(proj, view, halo, [1, 0.55, 0.25], 0.25, fogColor, [9000, 10000]);
+        const sm = billboardModel(view, -2200, planeY + 40, -3800, 850, 850);
+        drawTex(proj, view, sm, [1, 0.62, 0.3], 0.95, fogColor, [9000, 10000]);
+      } else {
+        const halo = billboardModel(view, -1600, altM + 750, -3800, 1500, 1500);
+        drawTex(proj, view, halo, [1, 0.93, 0.62], 0.25, fogColor, [9000, 10000]);
+        const sm = billboardModel(view, -1600, altM + 750, -3800, 850, 850);
+        drawTex(proj, view, sm, [1, 0.93, 0.62], 0.9, fogColor, [9000, 10000]);
+      }
     }
     gl.depthMask(true);
     gl.disable(gl.BLEND);

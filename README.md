@@ -7,7 +7,7 @@
 Built for [Make the best flight game](https://make.fun/bounty/best-flight-game-20261126-0057) on [make.fun](https://make.fun).
 
 **Bounty:** `best-flight-game-20261126-0057` — "Make the best flight game" ($500 pot, free entry)
-**Title:** Nusantara Sky Courier v4: 3/4 chase cam, living terrain — trees, villages, beaches, 7 islands, 12 missions
+**Title:** Nusantara Sky Courier v5: textured terrain, villages & beaches, low canyon flyover, 7 islands, 12 missions
 
 A one-screen Indonesian flight game in a chase view over recognisable
 terrain — **now real 3D**: the world is a raw WebGL1 scene (no library, no

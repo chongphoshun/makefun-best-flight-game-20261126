@@ -588,7 +588,7 @@ export function createRenderer(canvas) {
     ctx.closePath();
     ctx.fill();
     text('HEADING', cx0, 654, 11, '#9db8c9', 'center', true);
-    text(`${String(Math.round(state.heading)).padStart(3, '0')}°`, cx0, 676, 13, '#f2c94c', 'center', true);
+    text(`${String((((Math.round(state.heading) % 360) + 360) % 360)).padStart(3, '0')}°`, cx0, 676, 13, '#f2c94c', 'center', true);
     // Fuel gauge + throttle.
     const fx = 860;
     ctx.fillStyle = '#0d1a24';
@@ -640,7 +640,7 @@ export function createRenderer(canvas) {
     text('SPD', 190, 24, 12, '#9db8c9');
     text(`${fmt(state.speed)} kt`, 190, 50, 24, '#7dd7ff', 'left', true);
     text('HDG', 350, 24, 12, '#9db8c9');
-    text(`${String(Math.round(state.heading)).padStart(3, '0')}°`, 350, 50, 24, '#f2c94c', 'left', true);
+    text(`${String((((Math.round(state.heading) % 360) + 360) % 360)).padStart(3, '0')}°`, 350, 50, 24, '#f2c94c', 'left', true);
     const region = state.region;
     text(`${region.short} · ${region.note}`, 520, 26, 15, '#eaf6ff', 'left', true);
     const missionName = state.mission ? `M${state.mission.id} ${state.mission.name}` : state.mode === 'free' ? 'FREE FLIGHT' : state.mode === 'race' ? 'RING RACE' : 'LANDING CHALLENGE';
@@ -687,7 +687,7 @@ export function createRenderer(canvas) {
     ctx.stroke();
     text('NUSANTARA', 1112, 122, 26, '#f2c94c', 'center', true);
     text('SKY COURIER', 1112, 150, 26, '#eaf6ff', 'center', true);
-    text('v4 · 3/4 CHASE CAM · LIVING TERRAIN', 1112, 172, 11, '#9db8c9', 'center');
+    text('v5 · TEXTURED TERRAIN · VILLAGES & BEACHES', 1112, 172, 11, '#9db8c9', 'center');
     text('3 aircraft · 8 upgrades · 4 modes', 1112, 188, 11, '#9db8c9', 'center');
     text('Fly the rings, deliver the cargo,', 1112, 218, 13, '#eaf6ff', 'center');
     text('land on the runway.', 1112, 236, 13, '#eaf6ff', 'center');
@@ -781,6 +781,9 @@ export function createRenderer(canvas) {
 
   // v3: in WebGL mode the rings/runway are 3D meshes; only their labels are
   // 2D — projected from the 3D scene to logical screen coordinates.
+  // v5: label lines are clamped to y >= 132 — a ring near the top of the
+  // frame used to push its label under the top HUD bar / into the message
+  // banner (shot 1 v5 first pass: "RING 4" half-clipped).
   function drawLabels3D(state) {
     if (!scene3d) return;
     const landing = state.ringIndex >= state.rings.length;
@@ -792,8 +795,9 @@ export function createRenderer(canvas) {
         if (p) {
           // Both label lines sit ABOVE the ring: the plane flies under the
           // ring, so a label below it lands on the fuselage.
-          text(`RING ${state.ringIndex + 1}`, p.x, p.y - 108, 15, '#fff', 'center', true);
-          text(`${fmt(ring.alt)} ft · ${d.toFixed(1)} nm`, p.x, p.y - 88, 13, '#fff', 'center');
+          const ly = Math.max(p.y - 108, 132);
+          text(`RING ${state.ringIndex + 1}`, p.x, ly, 15, '#fff', 'center', true);
+          text(`${fmt(ring.alt)} ft · ${d.toFixed(1)} nm`, p.x, ly + 20, 13, '#fff', 'center');
         }
       }
     }
@@ -805,7 +809,7 @@ export function createRenderer(canvas) {
           // Runway label ABOVE the strip: the plane flies low over the runway
           // on approach, and a label below the projected point lands on the
           // fuselage.
-          text(`RUNWAY · ${d.toFixed(1)} nm — HDG ${String(Math.round(((state.runwayHeading % 360) + 360) % 360)).padStart(3, '0')}°`, p.x, p.y - 34, 16, '#fff', 'center', true);
+          text(`RUNWAY · ${d.toFixed(1)} nm — HDG ${String(Math.round(((state.runwayHeading % 360) + 360) % 360)).padStart(3, '0')}°`, p.x, Math.max(p.y - 34, 132), 16, '#fff', 'center', true);
         }
       }
     }
