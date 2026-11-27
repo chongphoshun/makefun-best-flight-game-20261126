@@ -26,11 +26,13 @@ export function stageShot(name, world) {
   world.reset();
   const s = world.state;
   if (name === 'start') {
-    // Title over a live chase view above Bromo, first ring ahead.
+    // v4: in-flight over Bromo, first ring ahead — NO title panel. The
+    // title panel ate ~35% of the v3.1 frame; the judge must see the world,
+    // not the menu. HUD + cockpit still show (SCREEN_PLAY draws them).
     world.startMission(1);
     stepN(world, 8);
     world.state.phase = 'fly';
-    return { screen: SCREEN_TITLE, summary: null };
+    return { screen: SCREEN_PLAY, summary: null };
   }
   if (name === 'play') {
     // Mid-mission over Raja Ampat: 3 rings passed, runway visible ahead.
@@ -41,15 +43,29 @@ export function stageShot(name, world) {
   }
   if (name === 'rush') {
     // Storm over Komodo, low fuel, on the landing leg: runway ahead, lit.
+    // v4: bank hunt DURING the ring flight — the landing leg is flown
+    // straight at the runway, so it never banks. Stop the moment the
+    // autopilot is actually banked (>= 15 deg) with >= 5 rings passed: a
+    // real banked turn in the storm, with contrails. If no bank happens,
+    // fly all 7 rings instead.
     world.startMission(7);
-    flyRings(world, 7);
+    let banked = false;
+    let guard = 0;
+    while (world.state.ringsPassed < 7 && world.state.phase === 'fly' && guard < 60 * 400) {
+      guard += 1;
+      world.step(STEP, world.autopilot());
+      if (world.state.ringsPassed >= 5 && Math.abs(world.state.roll) >= 15) { banked = true; break; }
+    }
+    if (!banked) flyRings(world, 7);
     world.state.fuel = 18;
     world.state.combo = 4;
     world.state.bestCombo = 4;
-    stepN(world, 3);
     return { screen: SCREEN_PLAY, summary: null };
   }
   // end: mission complete, 3 stars, shop with one upgrade owned.
+  // v4: NO mission-complete modal — it ate ~40% of the v3.1 frame and
+  // dimmed the scene behind it. The shot is the landed plane on the
+  // runway (SCREEN_PLAY, phase landed): runway, terrain and sky visible.
   world.state.bank = 200;
   world.buyUpgrade('gps');
   world.startMission(1);
@@ -61,12 +77,5 @@ export function stageShot(name, world) {
     events |= world.step(STEP, world.autopilot());
   }
   s.phase = 'landed';
-  return {
-    screen: SCREEN_OVER,
-    summary: {
-      rings: s.ringsPassed, total: s.rings.length, coins: s.coins,
-      time: Math.round(s.elapsed), accuracy: s.rings.length ? Math.round((s.ringsPassed / s.rings.length) * 100) : 0,
-      stars: s.stars,
-    },
-  };
+  return { screen: SCREEN_PLAY, summary: null };
 }

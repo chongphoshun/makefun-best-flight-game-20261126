@@ -687,7 +687,7 @@ export function createRenderer(canvas) {
     ctx.stroke();
     text('NUSANTARA', 1112, 122, 26, '#f2c94c', 'center', true);
     text('SKY COURIER', 1112, 150, 26, '#eaf6ff', 'center', true);
-    text('v3.1 · REAL 3D · 7 islands · 12 missions', 1112, 172, 11, '#9db8c9', 'center');
+    text('v4 · 3/4 CHASE CAM · LIVING TERRAIN', 1112, 172, 11, '#9db8c9', 'center');
     text('3 aircraft · 8 upgrades · 4 modes', 1112, 188, 11, '#9db8c9', 'center');
     text('Fly the rings, deliver the cargo,', 1112, 218, 13, '#eaf6ff', 'center');
     text('land on the runway.', 1112, 236, 13, '#eaf6ff', 'center');

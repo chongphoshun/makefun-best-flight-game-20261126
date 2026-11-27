@@ -149,6 +149,14 @@ function terrainColor(ax, as, h, slope, region) {
   if (slope > 0.55) { // steep faces read as rock
     c = [lerp(c[0], 0.4, 0.5), lerp(c[1], 0.38, 0.5), lerp(c[2], 0.36, 0.5)];
   }
+  // Forest (v4): low-slope mid-altitude ground reads as vegetation, not
+  // bare grass — a second noise field tints patches deep green, so the
+  // ground has vegetation zones visible from altitude.
+  if (h > 15 && h < 520 && slope < 0.35) {
+    const forest = fbm(ax * 0.004 + 53, as * 0.004 + 29, regionSeed(region.id) + 21);
+    const t = smoothstep(0.55, 0.78, forest) * 0.55;
+    c = [lerp(c[0], 0.10, t), lerp(c[1], 0.42, t), lerp(c[2], 0.16, t)];
+  }
   // Patchiness: a second noise breaks the flat colour into grass/forest
   // patches, so the ground reads as terrain, not a painted backdrop.
   const patch = 0.78 + 0.44 * fbm(ax * 0.008 + 31, as * 0.008 + 17, regionSeed(region.id) + 9);
@@ -585,6 +593,60 @@ function buildLandmarks(region) {
     m.cone(0, 130, 0, 14, 42, 4, [0.95, 0.79, 0.30]);
     items.push({ mesh: m, x: 350, y: 65, z: -2400 });
   }
+  // Living terrain (v4): trees and villages along the flight corridor, so
+  // the ground reads as inhabited land instead of a flat coloured sheet.
+  // Placement is deterministic (hash) and sampled against the real terrain
+  // height, so trees stand on land and houses sit on the ground, never in
+  // the water. Meshes are built in LOCAL coords around an item origin
+  // (x=0, z=-as0): a vertex at absolute (ax, as) sits at local
+  // (ax, h, as0 - as), so the draw code's relZ = lm.z + sPlane lands it
+  // exactly on the terrain grid. `span` is the mesh's half-length in z —
+  // the draw cull widens by it, or a long mesh would vanish while part of
+  // it is still in frame.
+  {
+    const seed = regionSeed(region.id);
+    const treeMesh = new Mesh();
+    let trees = 0;
+    // Band covers the whole mission (runways sit ~15-26 km down-course),
+    // not just the first 11 km — the v4 first pass put every tree behind
+    // the landing point, so the landed shot showed bare grass.
+    for (let i = 0; i < 220 && trees < 60; i += 1) {
+      const ax = (hash2(i, 3, seed) - 0.5) * 4200;
+      if (Math.abs(ax) < 160) continue; // keep the centreline clear
+      const as = 500 + hash2(i, 5, seed) * 25500;
+      const h = terrainHeight(ax, as, region);
+      if (h < 2 || h > 700) continue; // not in water, not on a peak
+      const s = 0.8 + hash2(i, 7, seed) * 0.7;
+      const th = 16 * s;
+      const tr = 6.5 * s;
+      const lz = 13250 - as;
+      treeMesh.cylinder(ax, h, lz, 1.1 * s, 5 * s, 5, [0.35, 0.24, 0.14]);
+      treeMesh.cone(ax, h + 4 * s, lz, tr, th, 6, [0.10, 0.38, 0.16]);
+      treeMesh.cone(ax, h + 4 * s + th * 0.55, lz, tr * 0.62, th * 0.7, 6, [0.14, 0.46, 0.20]);
+      trees += 1;
+    }
+    if (trees) items.push({ mesh: treeMesh, x: 0, y: 0, z: -13250, span: 12750 });
+    // Villages: 3 clusters of white houses with terracotta pyramid roofs.
+    // A cluster is kept only when >= 4 of its houses land on dry ground.
+    for (let k = 0; k < 3; k += 1) {
+      const vx = (k % 2 ? 1 : -1) * (520 + hash2(k, 21, seed) * 900);
+      const vas = 1800 + k * 7000 + hash2(k, 23, seed) * 800;
+      const vilMesh = new Mesh();
+      let houses = 0;
+      for (let i = 0; i < 40 && houses < 8; i += 1) {
+        const hx = vx + (hash2(k * 40 + i, 25, seed) - 0.5) * 240;
+        const has = vas + (hash2(k * 40 + i, 27, seed) - 0.5) * 240;
+        const h = terrainHeight(hx, has, region);
+        if (h < 2 || h > 400) continue;
+        const w = 7 + hash2(k * 40 + i, 29, seed) * 4;
+        const lz = vas - has;
+        vilMesh.box(hx, h + 1, lz, w, 6, w, [0.93, 0.92, 0.88]);
+        vilMesh.cone(hx, h + 4, lz, w * 0.75, 4.5, 4, [0.72, 0.36, 0.20]);
+        houses += 1;
+      }
+      if (houses >= 4) items.push({ mesh: vilMesh, x: 0, y: 0, z: -vas, span: 200 });
+    }
+  }
   return items;
 }
 
@@ -608,6 +670,34 @@ function makeBlobTexture(gl) {
   drawBlob(92, 78, 36, 0.8);
   drawBlob(58, 52, 30, 0.7);
   drawBlob(84, 56, 26, 0.6);
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return tex;
+}
+
+// Sky gradient (v4): a vertical gradient tile — deep sky at the top,
+// the region's sky colour mid-frame, pale haze at the horizon — drawn on
+// a far billboard so the upper half of the frame has depth instead of a
+// flat clear colour. Built per region (skies differ: clear blue, storm
+// orange) and cached.
+function makeSkyTexture(gl, skyHex) {
+  const c = document.createElement('canvas');
+  c.width = 16;
+  c.height = 256;
+  const x = c.getContext('2d');
+  const top = hexRgb(skyHex);
+  const rgb = (r, g, b) => `rgb(${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)})`;
+  const g = x.createLinearGradient(0, 0, 0, 256);
+  g.addColorStop(0, rgb(top[0] * 0.5, top[1] * 0.58, top[2] * 0.85));
+  g.addColorStop(0.55, rgb(top[0], top[1], top[2]));
+  g.addColorStop(1, 'rgb(238,244,248)');
+  x.fillStyle = g;
+  x.fillRect(0, 0, 16, 256);
   const tex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, tex);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c);
@@ -828,6 +918,11 @@ export function createScene3D(canvas) {
   const waveTex = makeWaveTexture(gl);
   const propDiscTex = makePropDiscTexture(gl);
   const detailTex = makeDetailTexture(gl);
+  const skyTexCache = {};
+  function skyTexture(region) {
+    if (!skyTexCache[region.id]) skyTexCache[region.id] = makeSkyTexture(gl, region.sky);
+    return skyTexCache[region.id];
+  }
   // The detail sampler lives on texture unit 0 for the colour program.
   gl.useProgram(progC);
   gl.uniform1i(locC.detail, 0);
@@ -1006,8 +1101,12 @@ export function createScene3D(canvas) {
     const proj = mat4Perspective((55 * Math.PI) / 180, aspect, 0.5, 9000);
     const rollRad = (state.roll * Math.PI) / 180;
     const up = [Math.sin(-rollRad * 0.15), Math.cos(rollRad * 0.15), 0];
-    const eye = [0, altM + 6.5, 23];
-    const center = [0, altM - 2.5 + state.pitch * 0.08, -45];
+    // v4: 3/4 chase camera — offset to the side (~20 deg) and slightly
+    // closer, so the cheatline, canopy glint, prop disc and the aircraft's
+    // side read in the frame instead of a flat rear view. The plane sits
+    // left of centre with the next ring and the world ahead on the right.
+    const eye = [7.5, altM + 5.5, 21];
+    const center = [0, altM - 2 + state.pitch * 0.08, -45];
     const view = mat4LookAt(eye, center, up);
     lastProj = proj;
     lastView = view;
@@ -1021,6 +1120,14 @@ export function createScene3D(canvas) {
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LEQUAL);
     gl.disable(gl.BLEND);
+
+    // Sky gradient dome (v4): a far billboard with the vertical gradient,
+    // drawn first so terrain and sea overwrite it where they stand. The
+    // fog range sits beyond the quad so the gradient survives unfogged.
+    {
+      const sm = billboardModel(view, 0, altM + 1200, -8400, 22000, 9000);
+      drawTex(proj, view, sm, [1, 1, 1], 1, fogColor, [9000, 10000], skyTexture(region));
+    }
 
     // Water plane under the terrain (only for water regions). Textured with
     // wave streaks, tiled 48x so the sea has visible structure; the quad is
@@ -1127,7 +1234,8 @@ export function createScene3D(canvas) {
     }
     for (const lm of landmarks) {
       const relZ = lm.z + sPlane; // landmark z is stored as -as
-      if (relZ < -4200 || relZ > 900) continue;
+      const span = lm.span || 0; // long meshes (trees) cull by their extent
+      if (relZ < -4200 - span || relZ > 900 + span) continue;
       const relX = lm.x - latM;
       const lmModel = mat4Multiply(
         mat4Translate(relX, lm.y, relZ),
@@ -1143,7 +1251,15 @@ export function createScene3D(canvas) {
       if (d > -0.2 && d < 7) {
         const as = state.runwayDist * NM;
         const gy = terrainHeight(0, as, region);
-        const rm = mat4Translate(-latM, gy + 1, -(as - sPlane));
+        // Tilt the slab to the terrain's slope along its length (v4): a
+        // flat slab over undulating ground floated visibly at its far end.
+        const gyN = terrainHeight(0, as - 300, region);
+        const gyF = terrainHeight(0, as + 300, region);
+        const pitch = Math.atan2(gyF - gyN, 600);
+        const rm = mat4Multiply(
+          mat4Translate(-latM, gy + 1, -(as - sPlane)),
+          mat4RotateX(pitch),
+        );
         drawColor(proj, view, rm, runwayGeo, false, 1, sunDir, fogColor, fogRange);
       }
     }
@@ -1218,20 +1334,43 @@ export function createScene3D(canvas) {
         gl.depthMask(true);
         gl.disable(gl.BLEND);
       }
+      // Contrails (v4): faint wingtip trails while banked — a still frame
+      // of a banking plane reads as motion; a level plane shows none. The
+      // ribbon is a stretched blob quad in aircraft-local space: it starts
+      // at the trailing edge (z=2) and runs 42 m behind the wingtip.
+      if (Math.abs(state.roll) > 8) {
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.depthMask(false);
+        for (const sx of [-6.8, 6.8]) {
+          const tm = mat4Multiply(am, mat4Multiply(mat4Translate(sx, 0.9, 23), mat4Multiply(mat4RotateX(Math.PI / 2), mat4Scale(2.5, 42, 1))));
+          drawTex(proj, view, tm, [1, 1, 1], 0.32, fogColor, fogRange, blobTex);
+        }
+        gl.depthMask(true);
+        gl.disable(gl.BLEND);
+      }
     }
 
     // Clouds: anchored to absolute course position so they drift past.
+    // v4: more of them (26 -> 40), lower and bigger, so the upper half of
+    // the frame is sky with structure instead of empty gradient.
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     gl.depthMask(false);
+    // Horizon haze (v4): a wide soft band where sky meets ground, so the
+    // horizon is a layer of haze instead of a hard clear-colour edge.
+    {
+      const hm = billboardModel(view, 0, altM + 60, -3800, 15000, 420);
+      drawTex(proj, view, hm, [1, 1, 1], 0.22, fogColor, [9000, 10000]);
+    }
     const cloudAlpha = state.weatherId === 'fog' ? 0.5 : 0.85;
-    for (let k = 0; k < 26; k += 1) {
-      const kz = k * 700 + hash2(k, 3, 99) * 350;
+    for (let k = 0; k < 40; k += 1) {
+      const kz = k * 550 + hash2(k, 3, 99) * 300;
       const relZ = -(kz - sPlane);
       if (relZ < -4000 || relZ > 700) continue;
       const cx = (hash2(k, 5, 99) - 0.5) * 4200 - latM * 0.4;
-      const cy = 950 + hash2(k, 7, 99) * 700;
-      const sz = 340 + hash2(k, 9, 99) * 380;
+      const cy = 550 + hash2(k, 7, 99) * 900;
+      const sz = 420 + hash2(k, 9, 99) * 400;
       const cm = billboardModel(view, cx, cy, relZ, sz, sz * 0.45);
       drawTex(proj, view, cm, [1, 1, 1], cloudAlpha, fogColor, fogRange);
     }

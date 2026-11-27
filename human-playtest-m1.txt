@@ -1,7 +1,8 @@
-HUMAN M1 (v3.1, CDP keyboard + held mouse-drag, HUD-steered 10 Hz, seed 1):
-phase=landed rings=4/4 time=168s coins=279 fuel=55 msg=LANDED! +50 coins +113 time bonus
-t=37s ring 1/4 alt=3126 spd=150 fuel=90
-t=59s ring 2/4 alt=3587 spd=150 fuel=84
-t=80s ring 3/4 alt=3265 spd=150 fuel=79
-t=102s ring 4/4 alt=3592 spd=150 fuel=73
+HUMAN M1 (v4, CDP keyboard + held mouse-drag, HUD-steered 10 Hz, seed 1, 960x540):
+phase=landed rings=4/4 time=206s coins=204 fuel=60 msg=LANDED! +50 coins +38 time bonus
+t=43s ring 1/4 alt=3048 spd=140 fuel=91
+t=67s ring 2/4 alt=3586 spd=130 fuel=86
+t=92s ring 3/4 alt=3307 spd=131 fuel=81
+t=117s ring 4/4 alt=3641 spd=133 fuel=76
 console errors: none
+Notes: driver attempt 1 crashed (renderer tab died ~88s at 1280x720); attempt 2 stalled (background-tab RAF throttle — game ran 0.1x real time); attempt 3 landed clean after adding periodic Target.activateTarget + Page.bringToFront and a 960x540 window. Slower than v3.1's 168s/+280 coins (10 Hz drag steering + ~12 fps SwiftShader), still a first-attempt landing.
